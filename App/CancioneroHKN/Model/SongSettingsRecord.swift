@@ -2,7 +2,7 @@ import CancioneroCore
 import Foundation
 import SwiftData
 
-/// Tono, cejilla y sostenidos/bemoles que el usuario eligió para una canción.
+/// Tono, cejilla, sostenidos/bemoles, tempo y notas de arreglo de una canción.
 /// Se guarda en el teléfono con SwiftData y sobrevive a reinicios de la app.
 @Model
 final class SongSettingsRecord {
@@ -10,6 +10,12 @@ final class SongSettingsRecord {
     var transpose: Int
     var capo: Int?
     var accidentalsRaw: String?
+    /// Pulsos por minuto; `nil` = sin tempo.
+    var bpm: Int? = nil
+    var beatsPerBar: Int = 4
+    var beatUnit: Int = 4
+    /// Notas de arreglo para toda la canción (quién entra, dinámica, estructura…).
+    var arrangement: String = ""
 
     init(songID: String) {
         self.songID = songID
@@ -27,6 +33,14 @@ final class SongSettingsRecord {
             transpose = newValue.transpose
             capo = newValue.capo
             accidentalsRaw = newValue.accidentals?.rawValue
+        }
+    }
+
+    var timeSignature: TimeSignature {
+        get { TimeSignature(beats: beatsPerBar, unit: beatUnit) }
+        set {
+            beatsPerBar = newValue.beats
+            beatUnit = newValue.unit
         }
     }
 }

@@ -4,8 +4,9 @@ import SwiftUI
 import UIKit
 
 /// Leer: solo la canción. Anotar: tocar una línea para marcarla. Dibujar: lápiz libre.
+/// Editar: tocar una línea para cambiar sus acordes o su letra.
 enum NotebookMode: String, CaseIterable, Identifiable {
-    case read, annotate, draw
+    case read, annotate, draw, edit
 
     var id: Self { self }
     var title: String {
@@ -13,6 +14,7 @@ enum NotebookMode: String, CaseIterable, Identifiable {
         case .read: return "Leer"
         case .annotate: return "Anotar"
         case .draw: return "Dibujar"
+        case .edit: return "Editar"
         }
     }
     var symbol: String {
@@ -20,6 +22,7 @@ enum NotebookMode: String, CaseIterable, Identifiable {
         case .read: return "book"
         case .annotate: return "tag"
         case .draw: return "pencil.tip"
+        case .edit: return "character.cursor.ibeam"
         }
     }
 }
@@ -28,11 +31,17 @@ enum NotebookMode: String, CaseIterable, Identifiable {
 /// anotaciones por línea y dibujo a mano. Todo se guarda en el teléfono.
 struct SongDetailView: View {
     let song: Song
+    /// Abre otra canción (p. ej. la copia recién duplicada).
+    var onOpen: (String) -> Void = { _ in }
+    /// La canción se eliminó.
+    var onClose: () -> Void = {}
 
     @Environment(\.modelContext) private var context
     @Query private var records: [SongSettingsRecord]
     @Query private var annotationRecords: [AnnotationRecord]
     @Query private var drawingRecords: [DrawingRecord]
+    @Query private var editRecords: [SongEditRecord]
+    @StateObject private var metronome = Metronome()
     @AppStorage("fontSize") private var fontSize: Double = 18
     @AppStorage("showChords") private var showChords = true
     @AppStorage("fingerDraws") private var fingerDraws = UIDevice.current.userInterfaceIdiom == .phone
@@ -43,16 +52,27 @@ struct SongDetailView: View {
     @State private var canvasGeneration = 0
     @State private var pinchBase: Double?
     @State private var zoomHUD: Int?
+    @State private var lineToEdit: LineAnchor?
+    @State private var showTempo = false
+    @State private var showEditor = false
+    @State private var confirmDelete = false
 
     static let baseFontSize = 18.0
 
-    init(song: Song) {
+    init(song: Song, onOpen: @escaping (String) -> Void = { _ in }, onClose: @escaping () -> Void = {}) {
         self.song = song
+        self.onOpen = onOpen
+        self.onClose = onClose
         let id = song.id
         _records = Query(filter: #Predicate<SongSettingsRecord> { $0.songID == id })
         _annotationRecords = Query(filter: #Predicate<AnnotationRecord> { $0.songID == id })
         _drawingRecords = Query(filter: #Predicate<DrawingRecord> { $0.songID == id })
+        _editRecords = Query(filter: #Predicate<SongEditRecord> { $0.songID == id })
     }
+
+    private var editRecord: SongEditRecord? { editRecords.first }
+    private var isCustom: Bool { editRecord?.isCustom == true }
+    private var isEditedOriginal: Bool { editRecord != nil && !isCustom }
 
     private var settings: ChordSettings { records.first?.settings ?? ChordSettings() }
     private var presentation: SongPresentation { SongPresentation(song: song, settings: settings) }
@@ -68,8 +88,11 @@ struct SongDetailView: View {
                 header
                 ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
                     BlockView(block: block, blockIndex: index, fontSize: fontSize, showChords: showChords,
-                              annotations: byLine, isAnnotating: mode == .annotate,
-                              onTapLine: { editingLine = $0 }, onDelete: delete)
+                              annotations: byLine, isAnnotating: mode == .annotate, isEditing: mode == .edit,
+                              onTapLine: { anchor in
+                                  if mode == .edit { lineToEdit = anchor } else { editingLine = anchor }
+                              },
+                              onDelete: delete)
                         .overlay {
                             BlockCanvas(initialData: drawingRecords.first { $0.block == index }?.data,
                                         isEditable: mode == .draw, tool: tool, fingerDraws: fingerDraws,
@@ -82,7 +105,7 @@ struct SongDetailView: View {
             .padding(.leading, 30)
             .padding(.trailing, 18)
             .padding(.top, 12)
-            .padding(.bottom, mode == .draw ? 150 : 90)
+            .padding(.bottom, (mode == .draw ? 150 : 90) + (metronome.isPlaying ? 50 : 0))
             .frame(maxWidth: 820, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
@@ -95,10 +118,15 @@ struct SongDetailView: View {
                     DrawingPalette(tool: $tool, fingerDraws: $fingerDraws, onClearAll: clearDrawings)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
+                if metronome.isPlaying && !showTempo {
+                    MetronomePill(metronome: metronome, onTap: { showTempo = true })
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
                 ModeBar(mode: $mode)
             }
             .padding(.bottom, 10)
             .animation(.snappy, value: mode)
+            .animation(.snappy, value: metronome.isPlaying)
         }
         .overlay {
             if let zoomHUD {
@@ -110,7 +138,7 @@ struct SongDetailView: View {
                     .transition(.opacity)
             }
         }
-        .navigationTitle(song.title.capitalized(with: Locale(identifier: "es")))
+        .navigationTitle(song.displayTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
         .sheet(item: $editingLine) { anchor in
@@ -125,9 +153,140 @@ struct SongDetailView: View {
                 onVoice: { setVoice($0, at: anchor) },
                 onInstrument: { add(.instrument, $0.id, detail: $1.rawValue, at: anchor) },
                 onSticker: { add(.sticker, $0.id, at: anchor) },
-                onNote: { add(.note, $0, at: anchor) }
+                onNote: { add(.note, $0, at: anchor) },
+                onMelody: { add(.melody, $0, at: anchor) }
             )
         }
+        .sheet(item: $lineToEdit) { anchor in
+            if let line = song.line(at: anchor) {
+                LineEditSheet(line: line, suggestions: chordSuggestions, display: presentation.chord,
+                              toOriginal: toOriginal) { edited in
+                    save(song.replacingLine(at: anchor, with: edited))
+                }
+            }
+        }
+        .sheet(isPresented: $showTempo) {
+            TempoSheet(bpm: bpmBinding, signature: signatureBinding, arrangement: arrangementBinding,
+                       metronome: metronome)
+        }
+        .sheet(isPresented: $showEditor) {
+            SongEditorSheet(heading: "Editar canción", title: song.displayTitle, blocks: song.blocks) { title, blocks in
+                var edited = song
+                edited.title = title
+                edited.blocks = blocks
+                save(edited)
+            }
+        }
+        .confirmationDialog("¿Eliminar «\(song.displayTitle)»?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Eliminar canción", role: .destructive, action: deleteCustomSong)
+        } message: {
+            Text("Se borran también sus anotaciones y dibujos. No se puede deshacer.")
+        }
+        .onAppear(perform: syncMetronome)
+        .onDisappear { metronome.stop() }
+    }
+
+    // MARK: Edición
+
+    /// Acordes de la canción en el tono que se ve, sin repetir.
+    private var chordSuggestions: [String] {
+        var seen = Set<String>()
+        return song.allChords.map(presentation.chord).filter { seen.insert($0).inserted }
+    }
+
+    /// Lo que el usuario escribe en el tono que ve se guarda en el tono original.
+    private func toOriginal(_ chord: String) -> String {
+        let p = presentation
+        guard p.shapeOffset != 0 else { return chord }
+        return Transposer.transpose(chord, by: -p.shapeOffset,
+                                    accidentals: p.originalShapesKey?.preferredAccidentals ?? .sharps)
+    }
+
+    private func save(_ edited: Song) {
+        if let editRecord {
+            editRecord.song = edited
+        } else {
+            context.insert(SongEditRecord(song: edited, isCustom: false))
+        }
+        try? context.save()
+    }
+
+    private func restoreOriginal() {
+        if let editRecord { context.delete(editRecord) }
+        try? context.save()
+    }
+
+    /// Copia la canción (con sus ajustes, anotaciones y dibujos) a «Mis canciones».
+    private func duplicate() {
+        let customs = ((try? context.fetch(FetchDescriptor<SongEditRecord>())) ?? []).filter(\.isCustom)
+        let number = max(SongEditRecord.firstCustomNumber - 1, customs.compactMap { $0.song?.number }.max() ?? 0) + 1
+        let id = "mi-" + UUID().uuidString.prefix(8).lowercased()
+        var copy = song.duplicated(id: id, number: number)
+        copy.title = song.displayTitle + " (mi versión)"
+        context.insert(SongEditRecord(song: copy, isCustom: true))
+        for r in annotationRecords {
+            if let kind = r.kind {
+                context.insert(AnnotationRecord(songID: id, anchor: r.anchor, kind: kind, value: r.value, detail: r.detail))
+            }
+        }
+        for d in drawingRecords {
+            context.insert(DrawingRecord(songID: id, block: d.block, data: d.data))
+        }
+        if let s = records.first {
+            let r = SongSettingsRecord(songID: id)
+            r.settings = s.settings
+            r.bpm = s.bpm
+            r.timeSignature = s.timeSignature
+            r.arrangement = s.arrangement
+            context.insert(r)
+        }
+        try? context.save()
+        onOpen(id)
+    }
+
+    private func deleteCustomSong() {
+        metronome.stop()
+        for r in annotationRecords { context.delete(r) }
+        for d in drawingRecords { context.delete(d) }
+        for s in records { context.delete(s) }
+        if let editRecord { context.delete(editRecord) }
+        try? context.save()
+        onClose()
+    }
+
+    // MARK: Tempo
+
+    private func settingsRecord() -> SongSettingsRecord {
+        if let existing = records.first { return existing }
+        let record = SongSettingsRecord(songID: song.id)
+        context.insert(record)
+        return record
+    }
+
+    private var bpmBinding: Binding<Int?> {
+        Binding(get: { records.first?.bpm }, set: { value in
+            settingsRecord().bpm = value
+            try? context.save()
+        })
+    }
+
+    private var signatureBinding: Binding<TimeSignature> {
+        Binding(get: { records.first?.timeSignature ?? TimeSignature(beats: 4, unit: 4) }, set: { value in
+            settingsRecord().timeSignature = value
+            try? context.save()
+        })
+    }
+
+    private var arrangementBinding: Binding<String> {
+        Binding(get: { records.first?.arrangement ?? "" }, set: { value in
+            settingsRecord().arrangement = value
+            try? context.save()
+        })
+    }
+
+    private func syncMetronome() {
+        guard let record = records.first, let bpm = record.bpm else { return }
+        metronome.configure(bpm: bpm, signature: record.timeSignature)
     }
 
     // MARK: Zoom
@@ -209,7 +368,7 @@ struct SongDetailView: View {
                         .font(.caption2.weight(.bold))
                         .tracking(1.2)
                         .foregroundStyle(Theme.secondaryInk)
-                    Text(song.title.capitalized(with: Locale(identifier: "es")))
+                    Text(song.displayTitle)
                         .font(.system(.title2, design: .serif).weight(.bold))
                         .foregroundStyle(Theme.ink)
                         .fixedSize(horizontal: false, vertical: true)
@@ -222,6 +381,19 @@ struct SongDetailView: View {
                     }
                     Chip(text: presentation.capo == 0 ? "Sin cejilla" : "Cejilla \(presentation.capo)",
                          systemImage: "guitars")
+                    Button { showTempo = true } label: {
+                        if let record = records.first, let bpm = record.bpm {
+                            Chip(text: "♩ = \(bpm) · \(record.timeSignature)", systemImage: "metronome", tint: Theme.chord)
+                        } else {
+                            Chip(text: "Añadir tempo", systemImage: "metronome", tint: Theme.secondaryInk)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    if isCustom {
+                        Chip(text: "Mi canción", systemImage: "person.crop.circle", tint: .purple)
+                    } else if isEditedOriginal {
+                        Chip(text: "Editada", systemImage: "pencil", tint: .purple)
+                    }
                     if settings.transpose != 0 {
                         Chip(text: settings.transpose > 0 ? "+\(settings.transpose) semitonos" : "\(settings.transpose) semitonos",
                              systemImage: "arrow.up.arrow.down", tint: .orange)
@@ -242,6 +414,29 @@ struct SongDetailView: View {
                         .foregroundStyle(Theme.voice(voice))
                     }
                 }
+            }
+            if let arrangement = records.first?.arrangement, !arrangement.isEmpty {
+                Button { showTempo = true } label: {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "music.note.list")
+                            .foregroundStyle(Theme.accent)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("ARREGLO")
+                                .font(.caption2.weight(.bold))
+                                .tracking(1)
+                                .foregroundStyle(Theme.secondaryInk)
+                            Text(arrangement)
+                                .font(.subheadline)
+                                .foregroundStyle(Theme.ink)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(10)
+                    .background(Theme.paper, in: RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
             }
             if !song.chordDefinitions.isEmpty {
                 Text(song.chordDefinitions.sorted { $0.key < $1.key }
@@ -318,6 +513,27 @@ struct SongDetailView: View {
 
     @ViewBuilder
     private var optionsMenu: some View {
+        Section("Canción") {
+            Button { showTempo = true } label: {
+                Label("Tempo, metrónomo y arreglo", systemImage: "metronome")
+            }
+            Button { showEditor = true } label: {
+                Label("Editar letra y acordes", systemImage: "square.and.pencil")
+            }
+            Button(action: duplicate) {
+                Label("Duplicar como mi versión", systemImage: "plus.square.on.square")
+            }
+            if isEditedOriginal {
+                Button(role: .destructive, action: restoreOriginal) {
+                    Label("Restaurar canción original", systemImage: "arrow.uturn.backward")
+                }
+            }
+            if isCustom {
+                Button(role: .destructive) { confirmDelete = true } label: {
+                    Label("Eliminar canción", systemImage: "trash")
+                }
+            }
+        }
         Section("Cejilla") {
             Picker("Cejilla", selection: Binding(
                 get: { presentation.capo },
@@ -356,7 +572,7 @@ struct SongDetailView: View {
             Toggle("Mostrar acordes", isOn: $showChords)
         }
         if !settings.isDefault {
-            Button("Volver al original", role: .destructive) {
+            Button("Volver al tono original", role: .destructive) {
                 change { $0 = ChordSettings() }
             }
         }
@@ -385,7 +601,7 @@ struct SongDetailView: View {
     }
 }
 
-/// Barra flotante para cambiar entre Leer, Anotar y Dibujar.
+/// Barra flotante para cambiar entre Leer, Anotar, Dibujar y Editar.
 private struct ModeBar: View {
     @Binding var mode: NotebookMode
 
@@ -395,20 +611,67 @@ private struct ModeBar: View {
                 Button {
                     mode = m
                 } label: {
-                    Label(m.title, systemImage: m.symbol)
+                    // Solo el modo activo muestra su nombre, para que quepan los cuatro.
+                    HStack(spacing: 6) {
+                        Image(systemName: m.symbol)
+                        if mode == m { Text(m.title) }
+                    }
                         .font(.subheadline.weight(.semibold))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
+                        .padding(.horizontal, mode == m ? 16 : 13)
+                        .padding(.vertical, 10)
                         .background(mode == m ? Theme.accent : .clear, in: Capsule())
                         .foregroundStyle(mode == m ? Color.white : Theme.ink)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(m.title)
                 .accessibilityAddTraits(mode == m ? .isSelected : [])
             }
         }
+        .animation(.snappy, value: mode)
         .padding(5)
         .background(.regularMaterial, in: Capsule())
         .overlay(Capsule().strokeBorder(Theme.hairline))
         .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+    }
+}
+
+/// Aviso flotante mientras suena el metrónomo: pulso, tempo y botón para parar.
+private struct MetronomePill: View {
+    @ObservedObject var metronome: Metronome
+    let onTap: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            BeatDots(beats: metronome.signature.beats, current: metronome.beat,
+                     signature: metronome.signature, size: 8)
+            Button(action: onTap) {
+                Text("\(metronome.bpm) BPM · \(metronome.signature.description)")
+                    .font(.footnote.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(Theme.ink)
+            }
+            .buttonStyle(.plain)
+            Button { metronome.stop() } label: {
+                Image(systemName: "stop.fill")
+                    .font(.footnote)
+                    .frame(width: 28, height: 28)
+                    .background(Color.red, in: Circle())
+                    .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Parar metrónomo")
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, 6)
+        .padding(.vertical, 6)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(Theme.hairline))
+        .shadow(color: .black.opacity(0.10), radius: 10, y: 3)
+    }
+}
+
+extension Song {
+    /// Los títulos del cancionero vienen en mayúsculas; los del usuario se dejan como están.
+    var displayTitle: String {
+        title == title.uppercased() ? title.capitalized(with: Locale(identifier: "es")) : title
     }
 }

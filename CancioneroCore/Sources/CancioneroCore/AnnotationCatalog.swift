@@ -81,7 +81,7 @@ public struct Sticker: Identifiable, Hashable, Sendable {
 
 /// Qué tipo de anotación es (se guarda como texto en la base de datos).
 public enum AnnotationKind: String, Codable, Sendable {
-    case voice, instrument, sticker, note
+    case voice, instrument, sticker, note, melody
 }
 
 /// Línea de una canción: bloque y posición dentro del bloque.
