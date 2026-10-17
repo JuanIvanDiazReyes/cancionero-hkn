@@ -31,6 +31,8 @@ enum NotebookMode: String, CaseIterable, Identifiable {
 /// anotaciones por línea y dibujo a mano. Todo se guarda en el teléfono.
 struct SongDetailView: View {
     let song: Song
+    /// La lista (favoritas o una lista propia) desde la que se abrió, para ir a la anterior o la siguiente.
+    var queue: SongQueue?
     /// Abre otra canción (p. ej. la copia recién duplicada).
     var onOpen: (String) -> Void = { _ in }
     /// La canción se eliminó.
@@ -41,6 +43,8 @@ struct SongDetailView: View {
     @Query private var annotationRecords: [AnnotationRecord]
     @Query private var drawingRecords: [DrawingRecord]
     @Query private var editRecords: [SongEditRecord]
+    @Query private var favoriteRecords: [FavoriteRecord]
+    @Query(sort: \SetListRecord.createdAt) private var setLists: [SetListRecord]
     @StateObject private var metronome = Metronome()
     @AppStorage("fontSize") private var fontSize: Double = 18
     @AppStorage("showChords") private var showChords = true
@@ -59,8 +63,10 @@ struct SongDetailView: View {
 
     static let baseFontSize = 18.0
 
-    init(song: Song, onOpen: @escaping (String) -> Void = { _ in }, onClose: @escaping () -> Void = {}) {
+    init(song: Song, queue: SongQueue? = nil, onOpen: @escaping (String) -> Void = { _ in },
+         onClose: @escaping () -> Void = {}) {
         self.song = song
+        self.queue = queue
         self.onOpen = onOpen
         self.onClose = onClose
         let id = song.id
@@ -68,6 +74,7 @@ struct SongDetailView: View {
         _annotationRecords = Query(filter: #Predicate<AnnotationRecord> { $0.songID == id })
         _drawingRecords = Query(filter: #Predicate<DrawingRecord> { $0.songID == id })
         _editRecords = Query(filter: #Predicate<SongEditRecord> { $0.songID == id })
+        _favoriteRecords = Query(filter: #Predicate<FavoriteRecord> { $0.songID == id })
     }
 
     private var editRecord: SongEditRecord? { editRecords.first }
@@ -105,7 +112,8 @@ struct SongDetailView: View {
             .padding(.leading, 30)
             .padding(.trailing, 18)
             .padding(.top, 12)
-            .padding(.bottom, (mode == .draw ? 150 : 90) + (metronome.isPlaying ? 50 : 0))
+            .padding(.bottom, (mode == .draw ? 150 : 90) + (metronome.isPlaying ? 50 : 0)
+                     + (queue != nil && mode == .read ? 50 : 0))
             .frame(maxWidth: 820, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
@@ -120,6 +128,10 @@ struct SongDetailView: View {
                 }
                 if metronome.isPlaying && !showTempo {
                     MetronomePill(metronome: metronome, onTap: { showTempo = true })
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                if let queue, mode == .read {
+                    QueueBar(queue: queue, onOpen: onOpen)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 ModeBar(mode: $mode)
@@ -186,6 +198,19 @@ struct SongDetailView: View {
         .onDisappear { metronome.stop() }
     }
 
+    // MARK: Favoritas
+
+    private var isFavorite: Bool { !favoriteRecords.isEmpty }
+
+    private func toggleFavorite() {
+        if favoriteRecords.isEmpty {
+            context.insert(FavoriteRecord(songID: song.id))
+        } else {
+            for r in favoriteRecords { context.delete(r) }
+        }
+        try? context.save()
+    }
+
     // MARK: Edición
 
     /// Acordes de la canción en el tono que se ve, sin repetir.
@@ -249,6 +274,10 @@ struct SongDetailView: View {
         for r in annotationRecords { context.delete(r) }
         for d in drawingRecords { context.delete(d) }
         for s in records { context.delete(s) }
+        for f in favoriteRecords { context.delete(f) }
+        for list in setLists where list.songIDs.contains(song.id) {
+            list.songIDs.removeAll { $0 == song.id }
+        }
         if let editRecord { context.delete(editRecord) }
         try? context.save()
         onClose()
@@ -457,6 +486,12 @@ struct SongDetailView: View {
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .secondaryAction) {
+            Button(action: toggleFavorite) {
+                Label(isFavorite ? "Quitar de favoritas" : "Añadir a favoritas",
+                      systemImage: isFavorite ? "star.fill" : "star")
+            }
+        }
         ToolbarItemGroup(placement: .primaryAction) {
             Button { change { $0.transpose -= 1 } } label: {
                 Label("Bajar medio tono", systemImage: "minus.circle")
@@ -519,6 +554,32 @@ struct SongDetailView: View {
             }
             Button { showEditor = true } label: {
                 Label("Editar letra y acordes", systemImage: "square.and.pencil")
+            }
+            Button(action: toggleFavorite) {
+                Label(isFavorite ? "Quitar de favoritas" : "Añadir a favoritas",
+                      systemImage: isFavorite ? "star.slash" : "star")
+            }
+            Menu {
+                ForEach(setLists) { list in
+                    Button {
+                        list.songIDs.append(song.id)
+                        try? context.save()
+                    } label: {
+                        if list.songIDs.contains(song.id) {
+                            Label(list.name, systemImage: "checkmark")
+                        } else {
+                            Text(list.name)
+                        }
+                    }
+                }
+                Button {
+                    context.insert(SetListRecord(name: "Lista \(setLists.count + 1)", songIDs: [song.id]))
+                    try? context.save()
+                } label: {
+                    Label("Lista nueva", systemImage: "plus")
+                }
+            } label: {
+                Label("Añadir a una lista", systemImage: "text.badge.plus")
             }
             Button(action: duplicate) {
                 Label("Duplicar como mi versión", systemImage: "plus.square.on.square")
@@ -673,5 +734,46 @@ extension Song {
     /// Los títulos del cancionero vienen en mayúsculas; los del usuario se dejan como están.
     var displayTitle: String {
         title == title.uppercased() ? title.capitalized(with: Locale(identifier: "es")) : title
+    }
+}
+
+/// Anterior y siguiente dentro de la lista desde la que se abrió la canción.
+private struct QueueBar: View {
+    let queue: SongQueue
+    let onOpen: (String) -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            step(queue.previous, systemImage: "chevron.left", label: "Anterior")
+            VStack(spacing: 0) {
+                Text(queue.name)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(Theme.secondaryInk)
+                    .lineLimit(1)
+                Text("\(queue.index + 1) de \(queue.count)")
+                    .font(.footnote.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(Theme.ink)
+            }
+            .frame(minWidth: 90)
+            step(queue.next, systemImage: "chevron.right", label: "Siguiente")
+        }
+        .padding(4)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(Theme.hairline))
+        .shadow(color: .black.opacity(0.10), radius: 10, y: 3)
+    }
+
+    private func step(_ song: Song?, systemImage: String, label: String) -> some View {
+        Button {
+            if let song { onOpen(song.id) }
+        } label: {
+            Image(systemName: systemImage)
+                .font(.subheadline.weight(.bold))
+                .frame(width: 40, height: 36)
+                .foregroundStyle(song == nil ? Theme.hairline : Theme.accent)
+        }
+        .buttonStyle(.plain)
+        .disabled(song == nil)
+        .accessibilityLabel(song.map { "\(label): \($0.displayTitle)" } ?? label)
     }
 }
