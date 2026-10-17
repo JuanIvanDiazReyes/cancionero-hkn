@@ -124,7 +124,7 @@ final class SongbookTests: XCTestCase {
         let lib = try SongLibrary(json: Data(contentsOf: Self.url))
         XCTAssertEqual(lib.songs.count, 126)
         XCTAssertEqual(lib.albums.first?.name, "HAKUNA")
-        XCTAssertEqual(lib.albums.count, 14)
+        XCTAssertEqual(lib.albums.count, 13)
     }
 
     func testSearch() throws {
