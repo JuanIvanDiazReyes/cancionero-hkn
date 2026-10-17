@@ -7,6 +7,6 @@ struct CancioneroHKNApp: App {
         WindowGroup {
             SongListView(library: LibraryStore.shared.library)
         }
-        .modelContainer(for: SongSettingsRecord.self)
+        .modelContainer(for: [SongSettingsRecord.self, AnnotationRecord.self, DrawingRecord.self])
     }
 }

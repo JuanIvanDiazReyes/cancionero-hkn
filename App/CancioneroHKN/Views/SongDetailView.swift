@@ -1,40 +1,158 @@
 import CancioneroCore
 import SwiftData
 import SwiftUI
+import UIKit
 
-/// Una canción con sus acordes, tono y cejilla ajustables.
+/// Leer: solo la canción. Anotar: tocar una línea para marcarla. Dibujar: lápiz libre.
+enum NotebookMode: String, CaseIterable, Identifiable {
+    case read, annotate, draw
+
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .read: return "Leer"
+        case .annotate: return "Anotar"
+        case .draw: return "Dibujar"
+        }
+    }
+}
+
+/// Una canción como página de cuaderno: acordes con tono y cejilla ajustables,
+/// anotaciones por línea y dibujo a mano. Todo se guarda en el teléfono.
 struct SongDetailView: View {
     let song: Song
 
     @Environment(\.modelContext) private var context
     @Query private var records: [SongSettingsRecord]
+    @Query private var annotationRecords: [AnnotationRecord]
+    @Query private var drawingRecords: [DrawingRecord]
     @AppStorage("fontSize") private var fontSize: Double = 18
     @AppStorage("showChords") private var showChords = true
+    @AppStorage("fingerDraws") private var fingerDraws = UIDevice.current.userInterfaceIdiom == .phone
+
+    @State private var mode: NotebookMode = .read
+    @State private var editingLine: LineAnchor?
+    @State private var tool: DrawingTool = .pen(.black)
+    @State private var canvasGeneration = 0
 
     init(song: Song) {
         self.song = song
         let id = song.id
         _records = Query(filter: #Predicate<SongSettingsRecord> { $0.songID == id })
+        _annotationRecords = Query(filter: #Predicate<AnnotationRecord> { $0.songID == id })
+        _drawingRecords = Query(filter: #Predicate<DrawingRecord> { $0.songID == id })
     }
 
     private var settings: ChordSettings { records.first?.settings ?? ChordSettings() }
     private var presentation: SongPresentation { SongPresentation(song: song, settings: settings) }
+    private var annotationsByLine: [LineAnchor: [AnnotationRecord]] {
+        Dictionary(grouping: annotationRecords, by: \.anchor)
+    }
 
     var body: some View {
+        let blocks = presentation.blocks
+        let byLine = annotationsByLine
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
-                ForEach(Array(presentation.blocks.enumerated()), id: \.offset) { _, block in
-                    BlockView(block: block, fontSize: fontSize, showChords: showChords)
+                ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+                    BlockView(block: block, blockIndex: index, fontSize: fontSize, showChords: showChords,
+                              annotations: byLine, isAnnotating: mode == .annotate,
+                              onTapLine: { editingLine = $0 }, onDelete: delete)
+                        .overlay {
+                            BlockCanvas(initialData: drawingRecords.first { $0.block == index }?.data,
+                                        isEditable: mode == .draw, tool: tool, fingerDraws: fingerDraws,
+                                        onChange: { saveDrawing($0, block: index) })
+                                .allowsHitTesting(mode == .draw)
+                                .id("\(index)-\(canvasGeneration)")
+                        }
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.leading, 30)
+            .padding(.trailing, 16)
             .padding(.vertical, 16)
+            .padding(.bottom, mode == .draw ? 80 : 0)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .scrollDisabled(mode == .draw && fingerDraws)
+        .background(NotebookPaper())
+        .overlay(alignment: .bottom) {
+            if mode == .draw {
+                DrawingPalette(tool: $tool, fingerDraws: $fingerDraws, onClearAll: clearDrawings)
+                    .padding(.bottom, 12)
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Picker("Modo", selection: $mode) {
+                ForEach(NotebookMode.allCases) { m in
+                    Text(m.title).tag(m)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(.bar)
         }
         .navigationTitle(song.title.capitalized(with: Locale(identifier: "es")))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
+        .sheet(item: $editingLine) { anchor in
+            AnnotationSheet(
+                lineText: lineText(anchor, in: blocks),
+                currentVoice: LineMarks(byLine[anchor] ?? []).voice?.voice,
+                onVoice: { setVoice($0, at: anchor) },
+                onInstrument: { add(.instrument, $0.id, detail: $1.rawValue, at: anchor) },
+                onSticker: { add(.sticker, $0.id, at: anchor) },
+                onNote: { add(.note, $0, at: anchor) }
+            )
+        }
+    }
+
+    // MARK: Anotaciones y dibujos
+
+    private func lineText(_ anchor: LineAnchor, in blocks: [SongBlock]) -> String {
+        guard blocks.indices.contains(anchor.block),
+              blocks[anchor.block].lines.indices.contains(anchor.line) else { return "" }
+        switch blocks[anchor.block].lines[anchor.line] {
+        case let .lyric(text, _): return text
+        case let .instrumental(_, _, text): return text
+        case let .directive(text): return text
+        }
+    }
+
+    private func add(_ kind: AnnotationKind, _ value: String, detail: String? = nil, at anchor: LineAnchor) {
+        context.insert(AnnotationRecord(songID: song.id, anchor: anchor, kind: kind, value: value, detail: detail))
+        try? context.save()
+    }
+
+    private func setVoice(_ voice: Voice?, at anchor: LineAnchor) {
+        for r in annotationRecords where r.anchor == anchor && r.kind == .voice {
+            context.delete(r)
+        }
+        if let voice {
+            context.insert(AnnotationRecord(songID: song.id, anchor: anchor, kind: .voice, value: voice.rawValue))
+        }
+        try? context.save()
+    }
+
+    private func delete(_ record: AnnotationRecord) {
+        context.delete(record)
+        try? context.save()
+    }
+
+    private func saveDrawing(_ data: Data, block: Int) {
+        if let existing = drawingRecords.first(where: { $0.block == block }) {
+            existing.data = data
+        } else {
+            context.insert(DrawingRecord(songID: song.id, block: block, data: data))
+        }
+        try? context.save()
+    }
+
+    private func clearDrawings() {
+        for r in drawingRecords { context.delete(r) }
+        try? context.save()
+        canvasGeneration += 1
     }
 
     // MARK: Cabecera
@@ -54,6 +172,16 @@ struct SongDetailView: View {
                 if settings.transpose != 0 {
                     Badge(text: settings.transpose > 0 ? "+\(settings.transpose)" : "\(settings.transpose)",
                           tint: .orange)
+                }
+            }
+            let voices = Set(annotationRecords.filter { $0.kind == .voice }.compactMap { Voice(rawValue: $0.value) })
+            if !voices.isEmpty {
+                HStack(spacing: 12) {
+                    ForEach(Voice.allCases.filter { voices.contains($0) }, id: \.self) { voice in
+                        Label(voice.title, systemImage: "circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(Notebook.color(voice))
+                    }
                 }
             }
             if !song.chordDefinitions.isEmpty {
