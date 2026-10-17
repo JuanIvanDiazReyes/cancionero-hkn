@@ -45,6 +45,13 @@ struct SongListView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selectedID) {
+                if query.isEmpty {
+                    // Dentro de la lista (y no fijo arriba) para que se vea el título grande.
+                    filterBar
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
                 if !query.isEmpty {
                     let results = library.search(query)
                     if results.isEmpty {
@@ -62,9 +69,6 @@ struct SongListView: View {
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
             .background(Theme.paper)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if query.isEmpty { filterBar }
-            }
             .navigationTitle("Cancionero HKN")
             .searchable(text: $query, prompt: "Título, número o letra")
             .toolbar {
@@ -236,10 +240,8 @@ struct SongListView: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.vertical, 4)
         }
-        .background(Theme.paper)
     }
 
     // MARK: Filas
