@@ -147,3 +147,17 @@ final class SongbookTests: XCTestCase {
         }
     }
 }
+
+final class AnnotationCatalogTests: XCTestCase {
+    func testIdsAreUnique() {
+        XCTAssertEqual(Set(Instrument.all.map(\.id)).count, Instrument.all.count)
+        XCTAssertEqual(Set(Sticker.all.map(\.id)).count, Sticker.all.count)
+    }
+
+    func testLookups() {
+        XCTAssertEqual(Instrument.find("piano")?.emoji, "🎹")
+        XCTAssertEqual(Sticker.find("x2")?.look, .text("x2"))
+        XCTAssertNil(Instrument.find("ukelele"))
+        XCTAssertEqual(Voice(rawValue: "together")?.title, "Juntos")
+    }
+}

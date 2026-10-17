@@ -1,68 +1,261 @@
 import CancioneroCore
 import SwiftData
 import SwiftUI
+import UIKit
 
-/// Una canción con sus acordes, tono y cejilla ajustables.
+/// Leer: solo la canción. Anotar: tocar una línea para marcarla. Dibujar: lápiz libre.
+enum NotebookMode: String, CaseIterable, Identifiable {
+    case read, annotate, draw
+
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .read: return "Leer"
+        case .annotate: return "Anotar"
+        case .draw: return "Dibujar"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .read: return "book"
+        case .annotate: return "tag"
+        case .draw: return "pencil.tip"
+        }
+    }
+}
+
+/// Una canción como página de cuaderno: acordes con tono y cejilla ajustables,
+/// anotaciones por línea y dibujo a mano. Todo se guarda en el teléfono.
 struct SongDetailView: View {
     let song: Song
 
     @Environment(\.modelContext) private var context
     @Query private var records: [SongSettingsRecord]
+    @Query private var annotationRecords: [AnnotationRecord]
+    @Query private var drawingRecords: [DrawingRecord]
     @AppStorage("fontSize") private var fontSize: Double = 18
     @AppStorage("showChords") private var showChords = true
+    @AppStorage("fingerDraws") private var fingerDraws = UIDevice.current.userInterfaceIdiom == .phone
+
+    @State private var mode: NotebookMode = .read
+    @State private var editingLine: LineAnchor?
+    @State private var tool: DrawingTool = .pen(.black)
+    @State private var canvasGeneration = 0
+    @State private var pinchBase: Double?
+    @State private var zoomHUD: Int?
+
+    static let baseFontSize = 18.0
 
     init(song: Song) {
         self.song = song
         let id = song.id
         _records = Query(filter: #Predicate<SongSettingsRecord> { $0.songID == id })
+        _annotationRecords = Query(filter: #Predicate<AnnotationRecord> { $0.songID == id })
+        _drawingRecords = Query(filter: #Predicate<DrawingRecord> { $0.songID == id })
     }
 
     private var settings: ChordSettings { records.first?.settings ?? ChordSettings() }
     private var presentation: SongPresentation { SongPresentation(song: song, settings: settings) }
+    private var annotationsByLine: [LineAnchor: [AnnotationRecord]] {
+        Dictionary(grouping: annotationRecords, by: \.anchor)
+    }
 
     var body: some View {
+        let blocks = presentation.blocks
+        let byLine = annotationsByLine
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 22) {
                 header
-                ForEach(Array(presentation.blocks.enumerated()), id: \.offset) { _, block in
-                    BlockView(block: block, fontSize: fontSize, showChords: showChords)
+                ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+                    BlockView(block: block, blockIndex: index, fontSize: fontSize, showChords: showChords,
+                              annotations: byLine, isAnnotating: mode == .annotate,
+                              onTapLine: { editingLine = $0 }, onDelete: delete)
+                        .overlay {
+                            BlockCanvas(initialData: drawingRecords.first { $0.block == index }?.data,
+                                        isEditable: mode == .draw, tool: tool, fingerDraws: fingerDraws,
+                                        onChange: { saveDrawing($0, block: index) })
+                                .allowsHitTesting(mode == .draw)
+                                .id("\(index)-\(canvasGeneration)")
+                        }
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 30)
+            .padding(.trailing, 18)
+            .padding(.top, 12)
+            .padding(.bottom, mode == .draw ? 150 : 90)
+            .frame(maxWidth: 820, alignment: .leading)
+            .frame(maxWidth: .infinity)
+        }
+        .scrollDisabled(mode == .draw && fingerDraws)
+        .simultaneousGesture(zoomGesture, including: mode == .draw ? .subviews : .all)
+        .background(NotebookPaper())
+        .overlay(alignment: .bottom) {
+            VStack(spacing: 10) {
+                if mode == .draw {
+                    DrawingPalette(tool: $tool, fingerDraws: $fingerDraws, onClearAll: clearDrawings)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                ModeBar(mode: $mode)
+            }
+            .padding(.bottom, 10)
+            .animation(.snappy, value: mode)
+        }
+        .overlay {
+            if let zoomHUD {
+                Text("\(zoomHUD)%")
+                    .font(.title3.weight(.bold).monospacedDigit())
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .transition(.opacity)
+            }
         }
         .navigationTitle(song.title.capitalized(with: Locale(identifier: "es")))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
+        .sheet(item: $editingLine) { anchor in
+            AnnotationSheet(
+                lineText: lineText(anchor, in: blocks),
+                existing: (byLine[anchor] ?? []).sorted { $0.createdAt < $1.createdAt },
+                onDelete: delete,
+                onDeleteAll: {
+                    for r in byLine[anchor] ?? [] { context.delete(r) }
+                    try? context.save()
+                },
+                onVoice: { setVoice($0, at: anchor) },
+                onInstrument: { add(.instrument, $0.id, detail: $1.rawValue, at: anchor) },
+                onSticker: { add(.sticker, $0.id, at: anchor) },
+                onNote: { add(.note, $0, at: anchor) }
+            )
+        }
+    }
+
+    // MARK: Zoom
+
+    /// Pellizcar con dos dedos agranda o achica la letra y los acordes (60 % a 240 %).
+    private var zoomGesture: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                let base = pinchBase ?? fontSize
+                pinchBase = base
+                fontSize = min(max(base * Double(value.magnification), 11), 44)
+                zoomHUD = Int((fontSize / Self.baseFontSize * 100).rounded())
+            }
+            .onEnded { _ in
+                pinchBase = nil
+                withAnimation(.easeOut.delay(0.6)) { zoomHUD = nil }
+            }
+    }
+
+    // MARK: Anotaciones y dibujos
+
+    private func lineText(_ anchor: LineAnchor, in blocks: [SongBlock]) -> String {
+        guard blocks.indices.contains(anchor.block),
+              blocks[anchor.block].lines.indices.contains(anchor.line) else { return "" }
+        switch blocks[anchor.block].lines[anchor.line] {
+        case let .lyric(text, _): return text
+        case let .instrumental(_, _, text): return text
+        case let .directive(text): return text
+        }
+    }
+
+    private func add(_ kind: AnnotationKind, _ value: String, detail: String? = nil, at anchor: LineAnchor) {
+        context.insert(AnnotationRecord(songID: song.id, anchor: anchor, kind: kind, value: value, detail: detail))
+        try? context.save()
+    }
+
+    private func setVoice(_ voice: Voice?, at anchor: LineAnchor) {
+        for r in annotationRecords where r.anchor == anchor && r.kind == .voice {
+            context.delete(r)
+        }
+        if let voice {
+            context.insert(AnnotationRecord(songID: song.id, anchor: anchor, kind: .voice, value: voice.rawValue))
+        }
+        try? context.save()
+    }
+
+    private func delete(_ record: AnnotationRecord) {
+        context.delete(record)
+        try? context.save()
+    }
+
+    private func saveDrawing(_ data: Data, block: Int) {
+        if let existing = drawingRecords.first(where: { $0.block == block }) {
+            existing.data = data
+        } else {
+            context.insert(DrawingRecord(songID: song.id, block: block, data: data))
+        }
+        try? context.save()
+    }
+
+    private func clearDrawings() {
+        for r in drawingRecords { context.delete(r) }
+        try? context.save()
+        canvasGeneration += 1
     }
 
     // MARK: Cabecera
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("\(song.number). \(song.title)")
-                .font(.title2.bold())
-            Text(song.album)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            HStack(spacing: 8) {
-                if let key = presentation.soundingKey {
-                    Badge(text: "Tono \(key.name(presentation.accidentals))")
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 14) {
+                Text("\(song.number)")
+                    .font(.system(size: 20, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 46, height: 46)
+                    .background(Theme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(song.album.uppercased())
+                        .font(.caption2.weight(.bold))
+                        .tracking(1.2)
+                        .foregroundStyle(Theme.secondaryInk)
+                    Text(song.title.capitalized(with: Locale(identifier: "es")))
+                        .font(.system(.title2, design: .serif).weight(.bold))
+                        .foregroundStyle(Theme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Badge(text: presentation.capo == 0 ? "Sin cejilla" : "Cejilla \(presentation.capo)")
-                if settings.transpose != 0 {
-                    Badge(text: settings.transpose > 0 ? "+\(settings.transpose)" : "\(settings.transpose)",
-                          tint: .orange)
+            }
+            FlowLayout {
+                Group {
+                    if let key = presentation.soundingKey {
+                        Chip(text: "Tono \(key.name(presentation.accidentals))", systemImage: "music.note")
+                    }
+                    Chip(text: presentation.capo == 0 ? "Sin cejilla" : "Cejilla \(presentation.capo)",
+                         systemImage: "guitars")
+                    if settings.transpose != 0 {
+                        Chip(text: settings.transpose > 0 ? "+\(settings.transpose) semitonos" : "\(settings.transpose) semitonos",
+                             systemImage: "arrow.up.arrow.down", tint: .orange)
+                    }
+                }
+                .padding(.trailing, 6)
+                .padding(.bottom, 6)
+            }
+            let voices = Set(annotationRecords.filter { $0.kind == .voice }.compactMap { Voice(rawValue: $0.value) })
+            if !voices.isEmpty {
+                HStack(spacing: 14) {
+                    ForEach(Voice.allCases.filter { voices.contains($0) }, id: \.self) { voice in
+                        HStack(spacing: 5) {
+                            Capsule().fill(Theme.voice(voice)).frame(width: 12, height: 4)
+                            Text(voice.title)
+                        }
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(Theme.voice(voice))
+                    }
                 }
             }
             if !song.chordDefinitions.isEmpty {
                 Text(song.chordDefinitions.sorted { $0.key < $1.key }
-                    .map { "\(presentation.chord($0.key)): \($0.value)" }.joined(separator: "   "))
+                    .map { "\(presentation.chord($0.key))  \($0.value)" }.joined(separator: "     "))
                     .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.secondaryInk)
             }
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.hairline))
+        .shadow(color: .black.opacity(0.04), radius: 8, y: 3)
+        .padding(.leading, -12)
     }
 
     // MARK: Barra de herramientas
@@ -77,7 +270,11 @@ struct SongDetailView: View {
                 keyMenu
             } label: {
                 Text(presentation.soundingKey?.name(presentation.accidentals) ?? "Tono")
-                    .font(.headline)
+                    .font(.system(.headline, design: .rounded))
+                    .foregroundStyle(Theme.chord)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Theme.chord.opacity(0.12), in: Capsule())
             }
             Button { change { $0.transpose += 1 } } label: {
                 Label("Subir medio tono", systemImage: "plus.circle")
@@ -146,12 +343,15 @@ struct SongDetailView: View {
                 Text("Bemoles (♭)").tag(Accidentals?.some(.flats))
             }
         }
-        Section("Texto") {
-            Button { fontSize = min(fontSize + 2, 40) } label: {
-                Label("Letra más grande", systemImage: "textformat.size.larger")
+        Section("Zoom (también con dos dedos)") {
+            Button { fontSize = min(fontSize + 2, 44) } label: {
+                Label("Acercar", systemImage: "plus.magnifyingglass")
             }
-            Button { fontSize = max(fontSize - 2, 12) } label: {
-                Label("Letra más pequeña", systemImage: "textformat.size.smaller")
+            Button { fontSize = max(fontSize - 2, 11) } label: {
+                Label("Alejar", systemImage: "minus.magnifyingglass")
+            }
+            Button { fontSize = Self.baseFontSize } label: {
+                Label("Tamaño normal", systemImage: "1.magnifyingglass")
             }
             Toggle("Mostrar acordes", isOn: $showChords)
         }
@@ -185,16 +385,30 @@ struct SongDetailView: View {
     }
 }
 
-private struct Badge: View {
-    let text: String
-    var tint: Color = .accentColor
+/// Barra flotante para cambiar entre Leer, Anotar y Dibujar.
+private struct ModeBar: View {
+    @Binding var mode: NotebookMode
 
     var body: some View {
-        Text(text)
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(tint.opacity(0.15), in: Capsule())
-            .foregroundStyle(tint)
+        HStack(spacing: 4) {
+            ForEach(NotebookMode.allCases) { m in
+                Button {
+                    mode = m
+                } label: {
+                    Label(m.title, systemImage: m.symbol)
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(mode == m ? Theme.accent : .clear, in: Capsule())
+                        .foregroundStyle(mode == m ? Color.white : Theme.ink)
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(mode == m ? .isSelected : [])
+            }
+        }
+        .padding(5)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(Theme.hairline))
+        .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
     }
 }
