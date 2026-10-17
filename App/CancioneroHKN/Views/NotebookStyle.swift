@@ -4,10 +4,10 @@ import UIKit
 
 /// Sistema visual de la app: colores, tipografías y piezas reutilizables.
 enum Theme {
-    /// Color principal de la app (botones, selección).
-    static let accent = Color(light: Color(hex: 0x1F4E79), dark: Color(hex: 0x7FB2E5))
-    /// Acordes: verde azulado intenso, distinto de los colores de voz.
-    static let chord = Color(light: Color(hex: 0x0B7A75), dark: Color(hex: 0x4FD1C5))
+    /// Color principal de la app (botones, selección), según el tema elegido.
+    static var accent: Color { AppTheme.current.accent }
+    /// Acordes: color intenso, distinto de los colores de voz.
+    static var chord: Color { AppTheme.current.chord }
     /// Texto de la letra.
     static let ink = Color(light: Color(hex: 0x1D1B18), dark: Color(hex: 0xF2EEE6))
     static let secondaryInk = Color(light: Color(hex: 0x6B6459), dark: Color(hex: 0xA59E92))
@@ -29,6 +29,72 @@ enum Theme {
     static func lyricFont(_ size: Double) -> Font { .system(size: size, weight: .regular, design: .serif) }
     static func chordFont(_ size: Double) -> Font { .system(size: size * 0.82, weight: .bold, design: .rounded) }
     static func labelFont(_ size: Double) -> Font { .system(size: size * 0.62, weight: .bold, design: .rounded) }
+}
+
+/// Combinaciones de color que el usuario puede elegir en Ajustes.
+enum AppTheme: String, CaseIterable, Identifiable {
+    case ocean, forest, wine, violet, graphite
+
+    static let storageKey = "theme"
+    static var current: AppTheme {
+        UserDefaults.standard.string(forKey: storageKey).flatMap(AppTheme.init(rawValue:)) ?? .ocean
+    }
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .ocean: return "Océano"
+        case .forest: return "Bosque"
+        case .wine: return "Vino"
+        case .violet: return "Lavanda"
+        case .graphite: return "Grafito"
+        }
+    }
+
+    var accent: Color {
+        switch self {
+        case .ocean: return Color(light: Color(hex: 0x1F4E79), dark: Color(hex: 0x7FB2E5))
+        case .forest: return Color(light: Color(hex: 0x2F5D3A), dark: Color(hex: 0x8FCB9B))
+        case .wine: return Color(light: Color(hex: 0x7A1F3D), dark: Color(hex: 0xE88AA8))
+        case .violet: return Color(light: Color(hex: 0x4B3B8F), dark: Color(hex: 0xB3A6F0))
+        case .graphite: return Color(light: Color(hex: 0x2E3440), dark: Color(hex: 0xC9CED8))
+        }
+    }
+
+    var chord: Color {
+        switch self {
+        case .ocean: return Color(light: Color(hex: 0x0B7A75), dark: Color(hex: 0x4FD1C5))
+        case .forest: return Color(light: Color(hex: 0xB5651D), dark: Color(hex: 0xF0A868))
+        case .wine: return Color(light: Color(hex: 0x1F6F8B), dark: Color(hex: 0x7CC6E0))
+        case .violet: return Color(light: Color(hex: 0x0E7C66), dark: Color(hex: 0x5ED6B8))
+        case .graphite: return Color(light: Color(hex: 0xC2410C), dark: Color(hex: 0xFB923C))
+        }
+    }
+}
+
+/// Modo claro, oscuro o el del sistema.
+enum Appearance: String, CaseIterable, Identifiable {
+    case system, light, dark
+
+    static let storageKey = "appearance"
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .system: return "Automático"
+        case .light: return "Claro"
+        case .dark: return "Oscuro"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
 }
 
 /// Nombres anteriores, para el código que aún los usa.

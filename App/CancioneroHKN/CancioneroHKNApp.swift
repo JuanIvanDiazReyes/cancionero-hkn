@@ -3,13 +3,19 @@ import SwiftUI
 
 @main
 struct CancioneroHKNApp: App {
+    @AppStorage(AppTheme.storageKey) private var theme = AppTheme.ocean.rawValue
+    @AppStorage(Appearance.storageKey) private var appearance = Appearance.system.rawValue
+
     var body: some Scene {
         WindowGroup {
             RootView()
                 .tint(Theme.accent)
+                .preferredColorScheme(Appearance(rawValue: appearance)?.colorScheme)
+                // Los colores del tema se leen al dibujar; cambiar de tema redibuja todo.
+                .id(theme)
         }
         .modelContainer(for: [SongSettingsRecord.self, AnnotationRecord.self, DrawingRecord.self,
-                              SongEditRecord.self])
+                              SongEditRecord.self, FavoriteRecord.self, SetListRecord.self])
     }
 }
 
