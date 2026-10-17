@@ -1,7 +1,7 @@
 import CancioneroCore
 import SwiftUI
 
-/// Hoja para anotar una línea: voz, instrumento, icono musical o nota.
+/// Hoja para anotar una línea: voz, instrumento, icono musical, nota o melodía.
 struct AnnotationSheet: View {
     let lineText: String
     let existing: [AnnotationRecord]
@@ -11,10 +11,13 @@ struct AnnotationSheet: View {
     let onInstrument: (Instrument, InstrumentCue) -> Void
     let onSticker: (Sticker) -> Void
     let onNote: (String) -> Void
+    let onMelody: (String) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var cue: InstrumentCue = .enters
     @State private var noteText = ""
+    @State private var melodyText = ""
+    @AppStorage("solfege") private var solfege = true
 
     private let columns = [GridItem(.adaptive(minimum: 76), spacing: 10)]
 
@@ -129,6 +132,51 @@ struct AnnotationSheet: View {
                         .buttonStyle(.borderedProminent)
                         .disabled(noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
+
+                    section("Melodía") {
+                        TextField("Do Re Mi:8 Mi:8 Fa:2 | Sol", text: $melodyText, axis: .vertical)
+                            .lineLimit(1...3)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.body.monospaced())
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                        let items = Melody.parse(melodyText)
+                        if !items.isEmpty {
+                            MelodyStaff(items: items, spacing: 8, solfege: solfege)
+                                .padding(10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                        }
+                        if !melodyText.isEmpty && !Melody.isValid(melodyText) {
+                            Label("Hay notas que no entiendo; revisa la ayuda de abajo.", systemImage: "exclamationmark.circle")
+                                .font(.footnote)
+                                .foregroundStyle(.orange)
+                        }
+                        DisclosureGroup("Cómo escribir notas") {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("• Notas: Do Re Mi Fa Sol La Si, o C D E F G A B; añade # o b.")
+                                Text("• Octava: Do5 es más agudo, Sol3 más grave (Do4 por defecto).")
+                                Text("• Duración: :1 redonda, :2 blanca, :4 negra, :8 corchea, :16 semicorchea; un punto al final = con puntillo (Sol:4.).")
+                                Text("• - es un silencio y | una barra de compás.")
+                            }
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 4)
+                        }
+                        .font(.footnote.weight(.semibold))
+                        HStack {
+                            Toggle("Nombres en Do Re Mi", isOn: $solfege)
+                                .font(.footnote)
+                                .fixedSize()
+                            Spacer()
+                            Button("Añadir melodía") {
+                                onMelody(melodyText.trimmingCharacters(in: .whitespacesAndNewlines))
+                                dismiss()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!Melody.isValid(melodyText))
+                        }
+                    }
                 }
                 .padding()
             }
@@ -156,6 +204,7 @@ struct AnnotationSheet: View {
             return (Instrument.find(record.value)?.name ?? record.value) + " · " + cue.title
         case .sticker: return Sticker.find(record.value)?.name ?? record.value
         case .note: return "Nota: " + record.value
+        case .melody: return "Melodía: " + record.value
         case nil: return record.value
         }
     }
@@ -205,6 +254,8 @@ private struct ExistingMarkIcon: View {
             if let sticker = Sticker.find(record.value) {
                 StickerGlyph(sticker: sticker, size: 15).foregroundStyle(Theme.accent)
             }
+        case .melody:
+            Image(systemName: "music.quarternote.3").foregroundStyle(Theme.ink)
         case .note, nil:
             Image(systemName: "note.text").foregroundStyle(Theme.noteInk)
         }

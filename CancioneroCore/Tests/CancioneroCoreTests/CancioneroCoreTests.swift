@@ -161,3 +161,131 @@ final class AnnotationCatalogTests: XCTestCase {
         XCTAssertEqual(Voice(rawValue: "together")?.title, "Juntos")
     }
 }
+
+final class SongTextTests: XCTestCase {
+    func testWholeSongbookRoundTrips() throws {
+        let lib = try SongLibrary(json: Data(contentsOf: SongbookTests.url))
+        for song in lib.songs {
+            XCTAssertEqual(SongText.blocks(from: SongText.text(for: song.blocks)), song.blocks, song.id)
+        }
+    }
+
+    func testParsesInlineChords() {
+        let blocks = SongText.blocks(from: "| INTRO: A Fm# (x2)\n\n[A]Al estar en[E]\n> (CORO)\n\\| no es acorde\n[Intro] sin acorde")
+        XCTAssertEqual(blocks.count, 2)
+        XCTAssertEqual(blocks[0].label, "INTRO")
+        XCTAssertEqual(blocks[0].lines[0], .instrumental(label: "INTRO", chords: ["A", "F#m"], text: "INTRO: A Fm# (x2)"))
+        XCTAssertEqual(blocks[1].lines[0], .lyric(text: "Al estar en", chords: [
+            PositionedChord(pos: 0, chord: "A"), PositionedChord(pos: 11, chord: "E"),
+        ]))
+        XCTAssertEqual(blocks[1].lines[1], .directive(text: "(CORO)"))
+        XCTAssertEqual(blocks[1].lines[2], .lyric(text: "| no es acorde", chords: []))
+        XCTAssertEqual(blocks[1].lines[3], .lyric(text: "[Intro] sin acorde", chords: []))
+    }
+
+    func testChordTokens() {
+        for chord in ["A", "F#m", "D/F#", "Cadd9", "Bm*", "DED-EDEDE", "GSus", "Em7/G"] {
+            XCTAssertTrue(ChordToken.isChord(chord), chord)
+        }
+        for word in ["Dios", "Ama", "(x2)", "-", "Al"] {
+            XCTAssertFalse(ChordToken.isChord(word), word)
+        }
+    }
+}
+
+final class SongEditingTests: XCTestCase {
+    let line = SongLine.lyric(text: "Te adoro a Ti", chords: [
+        PositionedChord(pos: 0, chord: "D"), PositionedChord(pos: 3, chord: "Bm"),
+    ])
+
+    func testChangeMoveRemoveAdd() {
+        XCTAssertEqual(line.replacingChord(at: 1, with: "G"), .lyric(text: "Te adoro a Ti", chords: [
+            PositionedChord(pos: 0, chord: "D"), PositionedChord(pos: 3, chord: "G"),
+        ]))
+        XCTAssertEqual(line.movingChord(at: 0, by: -3), line)
+        XCTAssertEqual(line.movingChordByWord(at: 1, forward: true),
+                       .lyric(text: "Te adoro a Ti", chords: [
+                           PositionedChord(pos: 0, chord: "D"), PositionedChord(pos: 9, chord: "Bm"),
+                       ]))
+        XCTAssertEqual(line.removingChord(at: 0).chordCount, 1)
+        XCTAssertEqual(line.addingChord("E", at: 11), .lyric(text: "Te adoro a Ti", chords: [
+            PositionedChord(pos: 0, chord: "D"), PositionedChord(pos: 3, chord: "Bm"), PositionedChord(pos: 11, chord: "E"),
+        ]))
+        XCTAssertEqual(line.replacingChord(at: 0, with: " "), line.removingChord(at: 0))
+    }
+
+    func testEditingLyricKeepsChordsOnTheirWords() {
+        let edited = line.replacingLyric(with: "Yo te adoro a Ti")
+        XCTAssertEqual(edited, .lyric(text: "Yo te adoro a Ti", chords: [
+            PositionedChord(pos: 3, chord: "D"), PositionedChord(pos: 6, chord: "Bm"),
+        ]))
+    }
+
+    func testInstrumentalEdits() {
+        let intro = SongLine.instrumental(label: "INTRO", chords: ["G", "D"], text: "INTRO: G D")
+        XCTAssertEqual(intro.replacingChord(at: 1, with: "C"),
+                       .instrumental(label: "INTRO", chords: ["G", "C"], text: "INTRO: G C"))
+        XCTAssertEqual(intro.addingChord("Em", at: 0).chordCount, 3)
+    }
+
+    func testDuplicate() {
+        let song = Song(id: "a", number: 3, title: "Hola", album: "HAKUNA", blocks: [SongBlock(lines: [line])])
+        let copy = song.duplicated(id: "b", number: 1001)
+        XCTAssertEqual(copy.title, "Hola (mi versión)")
+        XCTAssertEqual(copy.album, Song.customAlbum)
+        XCTAssertEqual(copy.blocks, song.blocks)
+        let changed = copy.replacingLine(at: LineAnchor(block: 0, line: 0), with: .directive(text: "x"))
+        XCTAssertEqual(changed.line(at: LineAnchor(block: 0, line: 0)), .directive(text: "x"))
+        XCTAssertNil(changed.line(at: LineAnchor(block: 1, line: 0)))
+    }
+}
+
+final class TempoTests: XCTestCase {
+    func testTapTempo() {
+        var tap = TapTempo()
+        XCTAssertNil(tap.tap(at: 10))
+        XCTAssertEqual(tap.tap(at: 10.5), 120)
+        XCTAssertEqual(tap.tap(at: 11.0), 120)
+        XCTAssertNil(tap.tap(at: 20))  // pausa larga: empieza de nuevo
+        XCTAssertEqual(tap.tap(at: 21), 60)
+    }
+
+    func testAccents() {
+        let sixEight = TimeSignature(beats: 6, unit: 8)
+        XCTAssertEqual((0..<6).filter(sixEight.isAccent), [0, 3])
+        XCTAssertEqual((0..<4).filter(TimeSignature(beats: 4, unit: 4).isAccent), [0])
+        XCTAssertEqual(TempoRange.clamp(500), 260)
+        XCTAssertEqual(TempoRange.marking(for: 72), "Adagio")
+    }
+}
+
+final class MelodyTests: XCTestCase {
+    func testParse() {
+        let items = Melody.parse("Do Re#:8 Mib5:2. | - C4 bb3:16")
+        XCTAssertEqual(items, [
+            .note(MelodyNote(pitch: 60)),
+            .note(MelodyNote(pitch: 63, value: .eighth, accidental: 1)),
+            .note(MelodyNote(pitch: 75, value: .half, dotted: true, accidental: -1)),
+            .bar,
+            .note(MelodyNote(pitch: nil)),
+            .note(MelodyNote(pitch: 60)),
+            .note(MelodyNote(pitch: 58, value: .sixteenth, accidental: -1)),
+        ])
+        XCTAssertTrue(Melody.isValid("Sol La Si"))
+        XCTAssertFalse(Melody.isValid("Sol hola"))
+        XCTAssertFalse(Melody.isValid("Do:3"))
+    }
+
+    func testStaffAndNames() {
+        func step(_ s: String) -> Int? {
+            guard case let .note(n) = Melody.item(s) else { return nil }
+            return n.staffStep
+        }
+        XCTAssertEqual(step("Mi"), 0)   // primera línea
+        XCTAssertEqual(step("Do"), -2)  // línea adicional abajo
+        XCTAssertEqual(step("Fa5"), 8)  // quinta línea
+        XCTAssertEqual(step("Fa#5"), 8)
+        XCTAssertEqual(Melody.name(of: MelodyNote(pitch: 61, accidental: 1)), "Do#4")
+        XCTAssertEqual(Melody.name(of: MelodyNote(pitch: 70, accidental: -1), solfege: false), "Bb4")
+    }
+}

@@ -11,6 +11,7 @@ struct LineMarks {
     var instruments: [InstrumentMark] = []
     var stickers: [StickerMark] = []
     var notes: [AnnotationRecord] = []
+    var melodies: [AnnotationRecord] = []
 
     init(_ records: [AnnotationRecord]) {
         for r in records.sorted(by: { $0.createdAt < $1.createdAt }) {
@@ -26,13 +27,17 @@ struct LineMarks {
                 if let st = Sticker.find(r.value) { stickers.append(StickerMark(record: r, sticker: st)) }
             case .note:
                 notes.append(r)
+            case .melody:
+                melodies.append(r)
             case nil:
                 break
             }
         }
     }
 
-    var isEmpty: Bool { voice == nil && instruments.isEmpty && stickers.isEmpty && notes.isEmpty }
+    var isEmpty: Bool {
+        voice == nil && instruments.isEmpty && stickers.isEmpty && notes.isEmpty && melodies.isEmpty
+    }
 }
 
 /// Un bloque de la canción (estrofa, coro, INTRO…) con sus anotaciones.
@@ -43,6 +48,7 @@ struct BlockView: View {
     let showChords: Bool
     let annotations: [LineAnchor: [AnnotationRecord]]
     let isAnnotating: Bool
+    var isEditing = false
     let onTapLine: (LineAnchor) -> Void
     let onDelete: (AnnotationRecord) -> Void
 
@@ -51,12 +57,12 @@ struct BlockView: View {
             ForEach(Array(block.lines.enumerated()), id: \.offset) { index, line in
                 let anchor = LineAnchor(block: blockIndex, line: index)
                 LineRow(marks: LineMarks(annotations[anchor] ?? []), fontSize: fontSize,
-                        isAnnotating: isAnnotating, onDelete: onDelete) {
+                        isAnnotating: isAnnotating, isEditing: isEditing, onDelete: onDelete) {
                     lineView(line)
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    if isAnnotating { onTapLine(anchor) }
+                    if isAnnotating || isEditing { onTapLine(anchor) }
                 }
             }
         }
@@ -91,8 +97,10 @@ private struct LineRow<Content: View>: View {
     let marks: LineMarks
     let fontSize: Double
     let isAnnotating: Bool
+    let isEditing: Bool
     let onDelete: (AnnotationRecord) -> Void
     @ViewBuilder let content: Content
+    @AppStorage("solfege") private var solfege = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -123,12 +131,26 @@ private struct LineRow<Content: View>: View {
                     .padding(.leading, 12)
                     .contextMenu { deleteButton(note) }
             }
+            ForEach(marks.melodies, id: \.id) { melody in
+                MelodyStaff(items: Melody.parse(melody.value), spacing: max(fontSize * 0.36, 5), solfege: solfege)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.hairline))
+                    .padding(.leading, 12)
+                    .contextMenu { deleteButton(melody) }
+            }
         }
         .overlay(alignment: .leading) {
             if isAnnotating {
                 Image(systemName: marks.isEmpty ? "plus.circle" : "ellipsis.circle.fill")
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.accent.opacity(marks.isEmpty ? 0.45 : 0.9))
+                    .offset(x: -20)
+            } else if isEditing {
+                Image(systemName: "pencil.circle")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.chord.opacity(0.7))
                     .offset(x: -20)
             }
         }

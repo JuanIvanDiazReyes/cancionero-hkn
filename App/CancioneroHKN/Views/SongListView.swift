@@ -1,4 +1,5 @@
 import CancioneroCore
+import SwiftData
 import SwiftUI
 
 /// Lista de canciones por álbum, con búsqueda por número, título o letra.
@@ -6,8 +7,10 @@ import SwiftUI
 struct SongListView: View {
     let library: SongLibrary
 
+    @Environment(\.modelContext) private var context
     @State private var query = ""
     @State private var selectedID: Song.ID?
+    @State private var creating = false
 
     var body: some View {
         NavigationSplitView {
@@ -41,16 +44,37 @@ struct SongListView: View {
             .background(Theme.paper)
             .navigationTitle("Cancionero HKN")
             .searchable(text: $query, prompt: "Título, número o letra")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { creating = true } label: {
+                        Label("Nueva canción", systemImage: "square.and.pencil")
+                    }
+                }
+            }
+            .sheet(isPresented: $creating) {
+                SongEditorSheet(heading: "Nueva canción", title: "", blocks: [], onSave: create)
+            }
         } detail: {
             if let id = selectedID, let song = library.song(id: id) {
-                SongDetailView(song: song)
+                SongDetailView(song: song, onOpen: { selectedID = $0 }, onClose: { selectedID = nil })
                     .id(song.id)
             } else {
                 ContentUnavailableView("Elige una canción", systemImage: "music.note.list",
-                                       description: Text("126 canciones de Hakuna con acordes y tus anotaciones."))
+                                       description: Text("\(library.songs.count) canciones con acordes y tus anotaciones."))
                     .background(Theme.paper)
             }
         }
+    }
+
+    /// Guarda una canción escrita por el usuario en «Mis canciones» y la abre.
+    private func create(title: String, blocks: [SongBlock]) {
+        let customs = ((try? context.fetch(FetchDescriptor<SongEditRecord>())) ?? []).filter(\.isCustom)
+        let number = max(SongEditRecord.firstCustomNumber - 1, customs.compactMap { $0.song?.number }.max() ?? 0) + 1
+        let song = Song(id: "mi-" + UUID().uuidString.prefix(8).lowercased(), number: number, title: title,
+                        album: Song.customAlbum, blocks: blocks)
+        context.insert(SongEditRecord(song: song, isCustom: true))
+        try? context.save()
+        selectedID = song.id
     }
 }
 
@@ -74,7 +98,7 @@ private struct SongRow: View {
                 .frame(width: 34, height: 34)
                 .background(Theme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
             VStack(alignment: .leading, spacing: 2) {
-                Text(song.title.capitalized(with: Locale(identifier: "es")))
+                Text(song.displayTitle)
                     .font(.system(.body, design: .serif).weight(.semibold))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(1)
