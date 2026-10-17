@@ -14,8 +14,18 @@ struct SongListView: View {
             List(selection: $selectedID) {
                 if query.isEmpty {
                     ForEach(library.albums) { album in
-                        Section(album.name) {
+                        Section {
                             ForEach(album.songs) { SongRow(song: $0) }
+                        } header: {
+                            HStack {
+                                Text(album.name)
+                                Spacer()
+                                Text("\(album.songs.count)")
+                                    .monospacedDigit()
+                            }
+                            .font(.caption.weight(.bold))
+                            .tracking(0.8)
+                            .foregroundStyle(Theme.secondaryInk)
                         }
                     }
                 } else {
@@ -26,6 +36,9 @@ struct SongListView: View {
                     ForEach(results) { SongRow(song: $0) }
                 }
             }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Theme.paper)
             .navigationTitle("Cancionero HKN")
             .searchable(text: $query, prompt: "Título, número o letra")
         } detail: {
@@ -33,7 +46,9 @@ struct SongListView: View {
                 SongDetailView(song: song)
                     .id(song.id)
             } else {
-                ContentUnavailableView("Elige una canción", systemImage: "music.note.list")
+                ContentUnavailableView("Elige una canción", systemImage: "music.note.list",
+                                       description: Text("126 canciones de Hakuna con acordes y tus anotaciones."))
+                    .background(Theme.paper)
             }
         }
     }
@@ -42,14 +57,34 @@ struct SongListView: View {
 private struct SongRow: View {
     let song: Song
 
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text("\(song.number)")
-                .font(.footnote.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 28, alignment: .trailing)
-            Text(song.title.capitalized(with: Locale(identifier: "es")))
+    private var firstLine: String {
+        for block in song.blocks {
+            for line in block.lines {
+                if case let .lyric(text, _) = line { return text }
+            }
         }
+        return ""
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text("\(song.number)")
+                .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundStyle(Theme.accent)
+                .frame(width: 34, height: 34)
+                .background(Theme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(song.title.capitalized(with: Locale(identifier: "es")))
+                    .font(.system(.body, design: .serif).weight(.semibold))
+                    .foregroundStyle(Theme.ink)
+                    .lineLimit(1)
+                Text(firstLine)
+                    .font(.caption)
+                    .foregroundStyle(Theme.secondaryInk)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.vertical, 2)
         .tag(song.id)
     }
 }

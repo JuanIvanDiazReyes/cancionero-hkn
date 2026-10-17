@@ -68,26 +68,19 @@ struct BlockView: View {
         case let .lyric(text, chords):
             ChordLyricLine(text: text, chords: showChords ? chords : [], fontSize: fontSize)
         case let .instrumental(label, chords, text):
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                if let label {
-                    Text(label)
-                        .font(.system(size: fontSize * 0.7, weight: .heavy))
-                        .foregroundStyle(.secondary)
-                }
+            HStack(alignment: .center, spacing: 10) {
+                SectionTag(text: label ?? "Instrumental", fontSize: fontSize)
                 if showChords {
-                    Text(label == nil ? text : chords.joined(separator: "  "))
-                        .font(.system(size: fontSize * 0.9, weight: .bold))
-                        .foregroundStyle(Color.chord)
-                } else if label == nil {
-                    Text("(instrumental)")
-                        .font(.system(size: fontSize * 0.8).italic())
-                        .foregroundStyle(.secondary)
+                    Text(label == nil ? text : chords.joined(separator: "   "))
+                        .font(Theme.chordFont(fontSize))
+                        .foregroundStyle(Theme.chord)
                 }
             }
+            .padding(.vertical, 2)
         case let .directive(text):
             Text(text)
-                .font(.system(size: fontSize * 0.85).italic())
-                .foregroundStyle(.secondary)
+                .font(Theme.lyricFont(fontSize * 0.85).italic())
+                .foregroundStyle(Theme.secondaryInk)
         }
     }
 }
@@ -104,39 +97,39 @@ private struct LineRow<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .center, spacing: 8) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(marks.voice.map { Notebook.color($0.voice) } ?? .clear)
-                    .frame(width: 5)
+                Capsule()
+                    .fill(marks.voice.map { Theme.voice($0.voice) } ?? .clear)
+                    .frame(width: 4)
                     .contextMenu { if let v = marks.voice { deleteButton(v.record) } }
                 content
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, marks.voice == nil ? 0 : 2)
-                    .padding(.horizontal, marks.voice == nil ? 0 : 4)
-                    .background(marks.voice.map { Notebook.color($0.voice).opacity(0.10) } ?? .clear,
-                                in: RoundedRectangle(cornerRadius: 6))
+                    .padding(.vertical, marks.voice == nil ? 0 : 3)
+                    .padding(.horizontal, marks.voice == nil ? 0 : 6)
+                    .background(marks.voice.map { Theme.voice($0.voice).opacity(0.09) } ?? .clear,
+                                in: RoundedRectangle(cornerRadius: 8))
                 if !marks.instruments.isEmpty || !marks.stickers.isEmpty {
                     trailingMarks
                 }
             }
             .fixedSize(horizontal: false, vertical: true)
             ForEach(marks.notes, id: \.id) { note in
-                Text(note.value)
-                    .font(.system(size: fontSize * 0.8))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Notebook.note, in: RoundedRectangle(cornerRadius: 4))
-                    .foregroundStyle(.black)
-                    .rotationEffect(.degrees(-1))
-                    .padding(.leading, 13)
+                Label(note.value, systemImage: "note.text")
+                    .font(.system(size: fontSize * 0.75, weight: .medium, design: .rounded))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Theme.note, in: RoundedRectangle(cornerRadius: 6))
+                    .foregroundStyle(Theme.noteInk)
+                    .shadow(color: .black.opacity(0.08), radius: 2, y: 1)
+                    .padding(.leading, 12)
                     .contextMenu { deleteButton(note) }
             }
         }
         .overlay(alignment: .leading) {
-            if isAnnotating && marks.isEmpty {
-                Image(systemName: "plus.circle")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .offset(x: -16)
+            if isAnnotating {
+                Image(systemName: marks.isEmpty ? "plus.circle" : "ellipsis.circle.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.accent.opacity(marks.isEmpty ? 0.45 : 0.9))
+                    .offset(x: -20)
             }
         }
     }
@@ -144,12 +137,17 @@ private struct LineRow<Content: View>: View {
     private var trailingMarks: some View {
         VStack(alignment: .trailing, spacing: 2) {
             ForEach(marks.instruments, id: \.record.id) { item in
-                HStack(spacing: 2) {
+                HStack(spacing: 3) {
                     Text(item.instrument.emoji)
-                    Image(systemName: item.cue == .enters ? "arrow.right.circle.fill" : "xmark.circle.fill")
+                    Image(systemName: item.cue == .enters ? "arrow.right" : "stop.fill")
+                        .font(.system(size: fontSize * 0.5, weight: .bold))
                         .foregroundStyle(item.cue == .enters ? Color.green : Color.red)
                 }
-                .font(.system(size: fontSize * 0.8))
+                .font(.system(size: fontSize * 0.75))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Theme.card, in: Capsule())
+                .overlay(Capsule().strokeBorder(Theme.hairline))
                 .accessibilityLabel("\(item.instrument.name): \(item.cue.title)")
                 .contextMenu {
                     Text("\(item.instrument.name) · \(item.cue.title)")
@@ -157,8 +155,8 @@ private struct LineRow<Content: View>: View {
                 }
             }
             ForEach(marks.stickers, id: \.record.id) { item in
-                StickerGlyph(sticker: item.sticker, size: fontSize * 0.8)
-                    .foregroundStyle(Color.chord)
+                StickerGlyph(sticker: item.sticker, size: fontSize * 0.75)
+                    .foregroundStyle(Theme.accent)
                     .accessibilityLabel(item.sticker.name)
                     .contextMenu {
                         Text(item.sticker.name)
@@ -192,11 +190,12 @@ struct ChordLyricLine: View {
                         VStack(alignment: .leading, spacing: 0) {
                             if hasChords {
                                 Text(piece.chord.map { $0 + " " } ?? " ")
-                                    .font(.system(size: fontSize * 0.85, weight: .bold))
-                                    .foregroundStyle(Color.chord)
+                                    .font(Theme.chordFont(fontSize))
+                                    .foregroundStyle(Theme.chord)
                             }
                             Text(piece.text.isEmpty ? " " : piece.text)
-                                .font(.system(size: fontSize))
+                                .font(Theme.lyricFont(fontSize))
+                                .foregroundStyle(Theme.ink)
                         }
                         .fixedSize()
                     }
@@ -257,7 +256,3 @@ struct FlowLayout: Layout {
     }
 }
 
-extension Color {
-    /// Color de los acordes.
-    static let chord = Color(red: 0.80, green: 0.25, blue: 0.10)
-}
