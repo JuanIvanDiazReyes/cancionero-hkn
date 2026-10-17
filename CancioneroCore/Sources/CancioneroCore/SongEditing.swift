@@ -25,7 +25,7 @@ public extension SongLine {
         let chord = chord.trimmingCharacters(in: .whitespaces)
         guard !chord.isEmpty else { return removingChord(at: index) }
         switch self {
-        case var .lyric(text, chords) where chords.indices.contains(index):
+        case .lyric(let text, var chords) where chords.indices.contains(index):
             chords[index].chord = chord
             return .lyric(text: text, chords: chords)
         case .instrumental(_, var chords, _) where chords.indices.contains(index):
@@ -38,7 +38,7 @@ public extension SongLine {
 
     func removingChord(at index: Int) -> SongLine {
         switch self {
-        case var .lyric(text, chords) where chords.indices.contains(index):
+        case .lyric(let text, var chords) where chords.indices.contains(index):
             chords.remove(at: index)
             return .lyric(text: text, chords: chords)
         case .instrumental(_, var chords, _) where chords.indices.contains(index):
