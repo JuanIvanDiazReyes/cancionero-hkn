@@ -14,10 +14,12 @@ public struct Backup: Codable, Equatable, Sendable {
     public var songs: [EditedSong]
     public var favorites: [String]
     public var setLists: [SetList]
+    /// Links de Spotify, YouTube, Drive… de cada canción.
+    public var links: [Link]
 
     public init(exportedAt: Date = Date(), settings: [SongSettings] = [], annotations: [Annotation] = [],
                 drawings: [Drawing] = [], songs: [EditedSong] = [], favorites: [String] = [],
-                setLists: [SetList] = []) {
+                setLists: [SetList] = [], links: [Link] = []) {
         self.version = Backup.currentVersion
         self.exportedAt = exportedAt
         self.settings = settings
@@ -26,6 +28,25 @@ public struct Backup: Codable, Equatable, Sendable {
         self.songs = songs
         self.favorites = favorites
         self.setLists = setLists
+        self.links = links
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case version, exportedAt, settings, annotations, drawings, songs, favorites, setLists, links
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        version = try c.decode(Int.self, forKey: .version)
+        exportedAt = try c.decode(Date.self, forKey: .exportedAt)
+        settings = try c.decode([SongSettings].self, forKey: .settings)
+        annotations = try c.decode([Annotation].self, forKey: .annotations)
+        drawings = try c.decode([Drawing].self, forKey: .drawings)
+        songs = try c.decode([EditedSong].self, forKey: .songs)
+        favorites = try c.decode([String].self, forKey: .favorites)
+        setLists = try c.decode([SetList].self, forKey: .setLists)
+        // Las copias anteriores a los links no traen este campo.
+        links = try c.decodeIfPresent([Link].self, forKey: .links) ?? []
     }
 
     public struct SongSettings: Codable, Equatable, Sendable {
@@ -109,9 +130,23 @@ public struct Backup: Codable, Equatable, Sendable {
         }
     }
 
+    public struct Link: Codable, Equatable, Sendable {
+        public var songID: String
+        public var url: String
+        public var title: String
+        public var createdAt: Date
+
+        public init(songID: String, url: String, title: String, createdAt: Date) {
+            self.songID = songID
+            self.url = url
+            self.title = title
+            self.createdAt = createdAt
+        }
+    }
+
     public var isEmpty: Bool {
         settings.isEmpty && annotations.isEmpty && drawings.isEmpty && songs.isEmpty
-            && favorites.isEmpty && setLists.isEmpty
+            && favorites.isEmpty && setLists.isEmpty && links.isEmpty
     }
 
     /// Resumen para confirmar antes de importar.
@@ -125,6 +160,7 @@ public struct Backup: Codable, Equatable, Sendable {
         add(songs.count, "canción editada o propia", "canciones editadas o propias")
         add(favorites.count, "favorita", "favoritas")
         add(setLists.count, "lista", "listas")
+        add(links.count, "link", "links")
         add(settings.count, "ajuste de canción", "ajustes de canciones")
         return parts.isEmpty ? "La copia está vacía." : parts.joined(separator: ", ")
     }

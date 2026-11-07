@@ -51,6 +51,7 @@ struct BlockView: View {
     var isEditing = false
     let onTapLine: (LineAnchor) -> Void
     let onDelete: (AnnotationRecord) -> Void
+    @Environment(\.onTapChord) private var onTapChord
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -77,9 +78,21 @@ struct BlockView: View {
             HStack(alignment: .center, spacing: 10) {
                 SectionTag(text: label ?? "Instrumental", fontSize: fontSize)
                 if showChords {
-                    Text(label == nil ? text : chords.joined(separator: "   "))
-                        .font(Theme.chordFont(fontSize))
-                        .foregroundStyle(Theme.chord)
+                    if label != nil, let onTapChord {
+                        // Cada acorde por separado para poder tocarlo.
+                        FlowLayout(lineSpacing: 4) {
+                            ForEach(Array(chords.enumerated()), id: \.offset) { _, chord in
+                                Text(chord + "   ")
+                                    .font(Theme.chordFont(fontSize))
+                                    .foregroundStyle(Theme.chord)
+                                    .chordTap(chord, onTapChord)
+                            }
+                        }
+                    } else {
+                        Text(label == nil ? text : chords.joined(separator: "   "))
+                            .font(Theme.chordFont(fontSize))
+                            .foregroundStyle(Theme.chord)
+                    }
                 }
             }
             .padding(.vertical, 2)
@@ -201,6 +214,7 @@ struct ChordLyricLine: View {
     let text: String
     let chords: [PositionedChord]
     let fontSize: Double
+    @Environment(\.onTapChord) private var onTapChord
 
     var body: some View {
         let words = ChordLayout.words(text: text, chords: chords)
@@ -214,6 +228,7 @@ struct ChordLyricLine: View {
                                 Text(piece.chord.map { $0 + " " } ?? " ")
                                     .font(Theme.chordFont(fontSize))
                                     .foregroundStyle(Theme.chord)
+                                    .chordTap(piece.chord, onTapChord)
                             }
                             Text(piece.text.isEmpty ? " " : piece.text)
                                 .font(Theme.lyricFont(fontSize))

@@ -39,12 +39,14 @@ struct SongDetailView: View {
     var onClose: () -> Void = {}
 
     @Environment(\.modelContext) private var context
+    @Environment(\.openURL) private var openURL
     @Query private var records: [SongSettingsRecord]
     @Query private var annotationRecords: [AnnotationRecord]
     @Query private var drawingRecords: [DrawingRecord]
     @Query private var editRecords: [SongEditRecord]
     @Query private var favoriteRecords: [FavoriteRecord]
     @Query(sort: \SetListRecord.createdAt) private var setLists: [SetListRecord]
+    @Query private var linkRecords: [SongLinkRecord]
     @StateObject private var metronome = Metronome()
     @AppStorage("fontSize") private var fontSize: Double = 18
     @AppStorage("showChords") private var showChords = true
@@ -60,6 +62,8 @@ struct SongDetailView: View {
     @State private var showTempo = false
     @State private var showEditor = false
     @State private var confirmDelete = false
+    @State private var showLinks = false
+    @State private var chordToShow: ChordRequest?
 
     static let baseFontSize = 18.0
 
@@ -75,6 +79,7 @@ struct SongDetailView: View {
         _drawingRecords = Query(filter: #Predicate<DrawingRecord> { $0.songID == id })
         _editRecords = Query(filter: #Predicate<SongEditRecord> { $0.songID == id })
         _favoriteRecords = Query(filter: #Predicate<FavoriteRecord> { $0.songID == id })
+        _linkRecords = Query(filter: #Predicate<SongLinkRecord> { $0.songID == id }, sort: \.createdAt)
     }
 
     private var editRecord: SongEditRecord? { editRecords.first }
@@ -109,6 +114,8 @@ struct SongDetailView: View {
                         }
                 }
             }
+            // En modo Leer, tocar un acorde muestra cómo se toca.
+            .environment(\.onTapChord, chordTapAction)
             .padding(.leading, 30)
             .padding(.trailing, 18)
             .padding(.top, 12)
@@ -181,6 +188,23 @@ struct SongDetailView: View {
             TempoSheet(bpm: bpmBinding, signature: signatureBinding, arrangement: arrangementBinding,
                        metronome: metronome)
         }
+        .sheet(item: $chordToShow) { request in
+            ChordSheet(name: request.name,
+                       definitions: presentation.shapeOffset == 0 ? song.chordDefinitions : [:],
+                       capo: presentation.capo,
+                       soundingAccidentals: presentation.soundingKey?.preferredAccidentals ?? .sharps)
+        }
+        .sheet(isPresented: $showLinks) {
+            LinksSheet(songTitle: song.displayTitle, links: linkRecords,
+                       onAdd: { url, title in
+                           context.insert(SongLinkRecord(songID: song.id, url: url.absoluteString, title: title))
+                           try? context.save()
+                       },
+                       onDelete: { record in
+                           context.delete(record)
+                           try? context.save()
+                       })
+        }
         .sheet(isPresented: $showEditor) {
             SongEditorSheet(heading: "Editar canción", title: song.displayTitle, blocks: song.blocks) { title, blocks in
                 var edited = song
@@ -196,6 +220,14 @@ struct SongDetailView: View {
         }
         .onAppear(perform: syncMetronome)
         .onDisappear { metronome.stop() }
+    }
+
+    // MARK: Acordes
+
+    /// Solo en modo Leer: en Anotar y Editar el toque es para la línea.
+    private var chordTapAction: ((String) -> Void)? {
+        guard mode == .read && showChords else { return nil }
+        return { name in chordToShow = ChordRequest(name: name) }
     }
 
     // MARK: Favoritas
@@ -257,6 +289,9 @@ struct SongDetailView: View {
         for d in drawingRecords {
             context.insert(DrawingRecord(songID: id, block: d.block, data: d.data))
         }
+        for l in linkRecords {
+            context.insert(SongLinkRecord(songID: id, url: l.url, title: l.title, createdAt: l.createdAt))
+        }
         if let s = records.first {
             let r = SongSettingsRecord(songID: id)
             r.settings = s.settings
@@ -275,6 +310,7 @@ struct SongDetailView: View {
         for d in drawingRecords { context.delete(d) }
         for s in records { context.delete(s) }
         for f in favoriteRecords { context.delete(f) }
+        for l in linkRecords { context.delete(l) }
         for list in setLists where list.songIDs.contains(song.id) {
             list.songIDs.removeAll { $0 == song.id }
         }
@@ -418,6 +454,25 @@ struct SongDetailView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    ForEach(linkRecords.prefix(3)) { link in
+                        Button { if let url = link.link { openURL(url) } } label: {
+                            Chip(text: link.title, systemImage: link.kind.systemImage, tint: link.kind.tint)
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button { showLinks = true } label: { Label("Editar links", systemImage: "pencil") }
+                        }
+                    }
+                    Button { showLinks = true } label: {
+                        if linkRecords.isEmpty {
+                            Chip(text: "Añadir link", systemImage: "link", tint: Theme.secondaryInk)
+                        } else {
+                            Chip(text: linkRecords.count > 3 ? "+\(linkRecords.count - 3)" : "Links",
+                                 systemImage: "link", tint: Theme.secondaryInk)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Links de la canción")
                     if isCustom {
                         Chip(text: "Mi canción", systemImage: "person.crop.circle", tint: .purple)
                     } else if isEditedOriginal {

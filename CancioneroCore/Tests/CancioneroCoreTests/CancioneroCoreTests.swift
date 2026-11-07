@@ -305,13 +305,27 @@ final class BackupTests: XCTestCase {
             songs: [.init(song: song, isCustom: true)],
             favorites: ["001", "mi-1"],
             setLists: [.init(id: UUID(), name: "Misa domingo", songIDs: ["001", "mi-1"],
-                             createdAt: Date(timeIntervalSince1970: 1_800_000_000))]
+                             createdAt: Date(timeIntervalSince1970: 1_800_000_000))],
+            links: [.init(songID: "001", url: "https://youtu.be/abc", title: "Ensayo",
+                          createdAt: Date(timeIntervalSince1970: 1_800_000_000))]
         )
         let decoded = try Backup.decode(backup.encoded())
         XCTAssertEqual(decoded, backup)
         XCTAssertFalse(decoded.isEmpty)
         XCTAssertTrue(decoded.summary.contains("1 anotación"))
         XCTAssertTrue(decoded.summary.contains("2 favoritas"))
+        XCTAssertTrue(decoded.summary.contains("1 link"))
+    }
+
+    /// Las copias hechas antes de que existieran los links se siguen pudiendo importar.
+    func testOlderBackupWithoutLinks() throws {
+        let json = """
+        {"version": 1, "exportedAt": "2026-10-17T21:00:00Z", "settings": [], "annotations": [],
+         "drawings": [], "songs": [], "favorites": ["001"], "setLists": []}
+        """
+        let backup = try Backup.decode(Data(json.utf8))
+        XCTAssertEqual(backup.favorites, ["001"])
+        XCTAssertEqual(backup.links, [])
     }
 
     func testRejectsNewerVersion() throws {
