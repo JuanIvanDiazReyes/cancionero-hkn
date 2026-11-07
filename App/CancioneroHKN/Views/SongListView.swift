@@ -42,7 +42,7 @@ struct SongListView: View {
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
             .background(Theme.paper)
-            .navigationTitle("Cancionero HKN")
+            .navigationTitle("CTEA")
             .searchable(text: $query, prompt: "Título, número o letra")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
