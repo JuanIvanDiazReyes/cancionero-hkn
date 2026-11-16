@@ -15,7 +15,8 @@ struct CancioneroHKNApp: App {
                 .id(theme)
         }
         .modelContainer(for: [SongSettingsRecord.self, AnnotationRecord.self, DrawingRecord.self,
-                              SongEditRecord.self, FavoriteRecord.self, SetListRecord.self])
+                              SongEditRecord.self, FavoriteRecord.self, SetListRecord.self,
+                              SongLinkRecord.self])
     }
 }
 

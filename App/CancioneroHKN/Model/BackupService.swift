@@ -26,6 +26,9 @@ enum BackupService {
                 .map(\.songID),
             setLists: try context.fetch(FetchDescriptor<SetListRecord>(sortBy: [SortDescriptor(\.createdAt)])).map {
                 .init(id: $0.id, name: $0.name, songIDs: $0.songIDs, createdAt: $0.createdAt)
+            },
+            links: try context.fetch(FetchDescriptor<SongLinkRecord>(sortBy: [SortDescriptor(\.createdAt)])).map {
+                .init(songID: $0.songID, url: $0.url, title: $0.title, createdAt: $0.createdAt)
             }
         )
     }
@@ -38,6 +41,7 @@ enum BackupService {
         try context.delete(model: SongEditRecord.self)
         try context.delete(model: FavoriteRecord.self)
         try context.delete(model: SetListRecord.self)
+        try context.delete(model: SongLinkRecord.self)
 
         for s in backup.settings {
             let r = SongSettingsRecord(songID: s.songID)
@@ -70,6 +74,9 @@ enum BackupService {
         }
         for l in backup.setLists {
             context.insert(SetListRecord(id: l.id, name: l.name, songIDs: l.songIDs, createdAt: l.createdAt))
+        }
+        for l in backup.links {
+            context.insert(SongLinkRecord(songID: l.songID, url: l.url, title: l.title, createdAt: l.createdAt))
         }
         try context.save()
     }
