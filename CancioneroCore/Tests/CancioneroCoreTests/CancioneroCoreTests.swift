@@ -289,3 +289,56 @@ final class MelodyTests: XCTestCase {
         XCTAssertEqual(Melody.name(of: MelodyNote(pitch: 70, accidental: -1), solfege: false), "Bb4")
     }
 }
+
+final class BackupTests: XCTestCase {
+    func testRoundTrip() throws {
+        let song = Song(id: "mi-1", number: 1001, title: "Nueva", album: Song.customAlbum, blocks: [
+            SongBlock(lines: [.lyric(text: "Hola", chords: [PositionedChord(pos: 0, chord: "G")])]),
+        ])
+        let backup = Backup(
+            exportedAt: Date(timeIntervalSince1970: 1_800_000_000),
+            settings: [.init(songID: "001", transpose: 2, capo: nil, accidentals: "flats", bpm: 72,
+                             beatsPerBar: 3, beatUnit: 4, arrangement: "Intro piano")],
+            annotations: [.init(songID: "001", block: 0, line: 1, kind: "voice", value: "woman", detail: nil,
+                                createdAt: Date(timeIntervalSince1970: 1_800_000_000))],
+            drawings: [.init(songID: "001", block: 2, data: Data([1, 2, 3]))],
+            songs: [.init(song: song, isCustom: true)],
+            favorites: ["001", "mi-1"],
+            setLists: [.init(id: UUID(), name: "Misa domingo", songIDs: ["001", "mi-1"],
+                             createdAt: Date(timeIntervalSince1970: 1_800_000_000))],
+            links: [.init(songID: "001", url: "https://youtu.be/abc", title: "Ensayo",
+                          createdAt: Date(timeIntervalSince1970: 1_800_000_000))]
+        )
+        let decoded = try Backup.decode(backup.encoded())
+        XCTAssertEqual(decoded, backup)
+        XCTAssertFalse(decoded.isEmpty)
+        XCTAssertTrue(decoded.summary.contains("1 anotación"))
+        XCTAssertTrue(decoded.summary.contains("2 favoritas"))
+        XCTAssertTrue(decoded.summary.contains("1 link"))
+    }
+
+    /// Las copias hechas antes de que existieran los links se siguen pudiendo importar.
+    func testOlderBackupWithoutLinks() throws {
+        let json = """
+        {"version": 1, "exportedAt": "2026-10-17T21:00:00Z", "settings": [], "annotations": [],
+         "drawings": [], "songs": [], "favorites": ["001"], "setLists": []}
+        """
+        let backup = try Backup.decode(Data(json.utf8))
+        XCTAssertEqual(backup.favorites, ["001"])
+        XCTAssertEqual(backup.links, [])
+    }
+
+    func testRejectsNewerVersion() throws {
+        var backup = Backup()
+        backup.version = Backup.currentVersion + 1
+        XCTAssertThrowsError(try Backup.decode(backup.encoded()))
+        XCTAssertEqual(Backup().summary, "La copia está vacía.")
+    }
+
+    func testMoving() {
+        let a = ["a", "b", "c", "d"]
+        XCTAssertEqual(a.moving(from: [0], to: 3), ["b", "c", "a", "d"])
+        XCTAssertEqual(a.moving(from: [3], to: 0), ["d", "a", "b", "c"])
+        XCTAssertEqual(a.moving(from: [1, 2], to: 4), ["a", "d", "b", "c"])
+    }
+}
