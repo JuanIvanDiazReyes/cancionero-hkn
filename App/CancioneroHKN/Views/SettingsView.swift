@@ -84,7 +84,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Cancionero y copia de seguridad")
                 } footer: {
-                    Text("Exporta un archivo .ctea para compartir tus canciones con tus cambios, o para respaldar todo (anotaciones, dibujos, tonos, favoritas y listas). Guárdalo en iCloud Drive para no perder nada si reinstalas la app (sin cuenta de desarrollador, la app se reinstala cada 7 días).")
+                    Text("Exporta un archivo .ctea para compartir tus canciones con tus cambios, o para respaldar todo (anotaciones, dibujos, tonos, favoritas y listas). Guárdalo en iCloud Drive para no perder nada si cambias de dispositivo o reinstalas la app.")
                 }
 
                 Section("Acerca de") {
