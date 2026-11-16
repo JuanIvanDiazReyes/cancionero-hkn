@@ -81,26 +81,57 @@ enum BackupService {
         try context.save()
     }
 
-    static func fileName(for date: Date = .now) -> String {
+    // MARK: Archivos .ctea
+
+    enum ExportContent {
+        /// Cancionero, ediciones y canciones propias: para compartir.
+        case songs
+        /// Además anotaciones, dibujos, tonos, favoritas, listas y links: respaldo personal.
+        case everything
+    }
+
+    enum ImportMode {
+        case combine, replace
+    }
+
+    /// Todo lo que hay ahora en la app como archivo `.ctea`.
+    static func makeFile(_ content: ExportContent, from context: ModelContext) throws -> CteaFile {
+        let store = LibraryStore.shared
+        var notebook = try makeBackup(from: context)
+        if content == .songs {
+            notebook = Backup(exportedAt: notebook.exportedAt, songs: notebook.songs)
+        }
+        return CteaFile(name: store.name, songs: store.library.songs, notebook: notebook)
+    }
+
+    /// Importa un archivo: combina o reemplaza el cancionero y lo guardado en la app.
+    static func apply(_ file: CteaFile, mode: ImportMode, into context: ModelContext) throws {
+        let current = try makeFile(.everything, from: context)
+        var result = mode == .combine ? file.combined(into: current) : file.replacing(current)
+        if current.songs.isEmpty, !file.songs.isEmpty {
+            // Primer cancionero importado: toma su nombre.
+            result.name = file.name
+        }
+        try LibraryStore.shared.replace(songs: result.songs, name: result.name)
+        try restore(result.notebook, into: context)
+    }
+
+    /// Escribe el archivo en una carpeta temporal para compartirlo.
+    static func temporaryURL(for file: CteaFile, content: ExportContent) throws -> URL {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
-        return "Cancionero HKN respaldo \(f.string(from: date))"
+        let suffix = content == .songs ? "" : " (respaldo)"
+        let safeName = file.name.replacingOccurrences(of: "/", with: "-")
+        let folder = FileManager.default.temporaryDirectory.appending(path: "export", directoryHint: .isDirectory)
+        try? FileManager.default.removeItem(at: folder)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appending(path: "\(safeName) \(f.string(from: .now))\(suffix).\(CteaFile.fileExtension)")
+        try file.encoded().write(to: url, options: .atomic)
+        return url
     }
 }
 
-/// El archivo .json que se guarda o comparte al exportar.
-struct BackupDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.json] }
-
-    var data: Data
-
-    init(data: Data) { self.data = data }
-
-    init(configuration: ReadConfiguration) throws {
-        data = configuration.file.regularFileContents ?? Data()
-    }
-
-    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        FileWrapper(regularFileWithContents: data)
-    }
+extension UTType {
+    /// Cancionero de CTEA (`.ctea`, JSON por dentro). Declarado en CancioneroHKN-Info.plist.
+    static let cteaSongbook = UTType(exportedAs: "com.juanivandiazreyes.cancionerohkn.ctea", conformingTo: .json)
 }

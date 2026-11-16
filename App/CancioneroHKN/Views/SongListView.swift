@@ -339,13 +339,7 @@ struct SongListView: View {
 
     /// Guarda una canción escrita por el usuario en «Mis canciones» y la abre.
     private func create(title: String, blocks: [SongBlock]) {
-        let customs = ((try? context.fetch(FetchDescriptor<SongEditRecord>())) ?? []).filter(\.isCustom)
-        let number = max(SongEditRecord.firstCustomNumber - 1, customs.compactMap { $0.song?.number }.max() ?? 0) + 1
-        let song = Song(id: "mi-" + UUID().uuidString.prefix(8).lowercased(), number: number, title: title,
-                        album: Song.customAlbum, blocks: blocks)
-        context.insert(SongEditRecord(song: song, isCustom: true))
-        try? context.save()
-        selectedID = song.id
+        selectedID = SongEditRecord.insertCustom(title: title, blocks: blocks, into: context).id
     }
 }
 

@@ -14,10 +14,8 @@ struct SettingsView: View {
     @AppStorage("solfege") private var solfege = true
     @AppStorage("fingerDraws") private var fingerDraws = UIDevice.current.userInterfaceIdiom == .phone
 
-    @State private var exportDocument: BackupDocument?
-    @State private var showExporter = false
-    @State private var showImporter = false
-    @State private var pendingImport: Backup?
+    @State private var choosingExport = false
+    @State private var sharing: SharedFile?
     @State private var message: String?
     /// El tema se aplica al cerrar Ajustes: cambiarlo redibuja toda la app.
     @State private var selectedTheme = AppTheme.current
@@ -73,22 +71,24 @@ struct SettingsView: View {
 
                 Section {
                     Button {
-                        export()
+                        choosingExport = true
                     } label: {
-                        Label("Exportar copia de seguridad", systemImage: "square.and.arrow.up")
+                        Label("Exportar cancionero", systemImage: "square.and.arrow.up")
                     }
                     Button {
-                        showImporter = true
+                        dismiss()
+                        ImportCenter.shared.requestPicker(after: 0.6)
                     } label: {
-                        Label("Importar copia de seguridad", systemImage: "square.and.arrow.down")
+                        Label("Importar cancionero", systemImage: "square.and.arrow.down")
                     }
                 } header: {
-                    Text("Copia de seguridad")
+                    Text("Cancionero y copia de seguridad")
                 } footer: {
-                    Text("Guarda en un archivo tus anotaciones, dibujos, tonos, tempos, canciones editadas, favoritas y listas. Guárdalo en iCloud Drive o envíatelo para no perder nada si cambias de teléfono o reinstalas la app (sin cuenta de desarrollador, la app se reinstala cada 7 días).")
+                    Text("Exporta un archivo .ctea para compartir tus canciones con tus cambios, o para respaldar todo (anotaciones, dibujos, tonos, favoritas y listas). Guárdalo en iCloud Drive para no perder nada si reinstalas la app (sin cuenta de desarrollador, la app se reinstala cada 7 días).")
                 }
 
                 Section("Acerca de") {
+                    LabeledContent("Cancionero", value: LibraryStore.shared.isEmpty ? "Ninguno" : LibraryStore.shared.name)
                     LabeledContent("Canciones del cancionero", value: "\(LibraryStore.shared.library.songs.count)")
                     LabeledContent("Versión", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")
                 }
@@ -104,24 +104,17 @@ struct SettingsView: View {
                     Button("Listo") { dismiss() }
                 }
             }
-            .fileExporter(isPresented: $showExporter, document: exportDocument, contentType: .json,
-                          defaultFilename: BackupService.fileName()) { result in
-                switch result {
-                case .success: message = "Copia guardada."
-                case let .failure(error): message = "No se pudo guardar: \(error.localizedDescription)"
-                }
-            }
-            .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json]) { result in
-                load(result)
-            }
-            .confirmationDialog("¿Reemplazar todo con esta copia?", isPresented: Binding(
-                get: { pendingImport != nil }, set: { if !$0 { pendingImport = nil } }
-            ), titleVisibility: .visible) {
-                Button("Reemplazar todo", role: .destructive) {
-                    if let backup = pendingImport { restore(backup) }
-                }
+            .confirmationDialog("¿Qué quieres exportar?", isPresented: $choosingExport, titleVisibility: .visible) {
+                Button("Solo canciones (para compartir)") { export(.songs) }
+                Button("Todo (respaldo personal)") { export(.everything) }
+                Button("Cancelar", role: .cancel) {}
             } message: {
-                Text("La copia tiene: \(pendingImport?.summary ?? ""). Lo que tienes ahora en la app se sustituye por la copia.")
+                Text("Solo canciones: letras y acordes con tus ediciones y tus canciones propias.\nTodo: además tus anotaciones, dibujos, tonos, tempos, favoritas, listas y links.")
+            }
+            .sheet(item: $sharing) { file in
+                ActivityView(url: file.url)
+                    .presentationDetents([.medium, .large])
+                    .ignoresSafeArea()
             }
             .alert(message ?? "", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) {
                 Button("OK", role: .cancel) {}
@@ -129,37 +122,17 @@ struct SettingsView: View {
         }
     }
 
-    private func export() {
+    private func export(_ content: BackupService.ExportContent) {
         do {
-            let backup = try BackupService.makeBackup(from: context)
-            exportDocument = BackupDocument(data: try backup.encoded())
-            showExporter = true
+            let file = try BackupService.makeFile(content, from: context)
+            guard !file.isEmpty else {
+                message = "Todavía no hay canciones para exportar."
+                return
+            }
+            sharing = SharedFile(url: try BackupService.temporaryURL(for: file, content: content))
         } catch {
-            message = "No se pudo preparar la copia: \(error.localizedDescription)"
+            message = "No se pudo preparar el archivo: \(error.localizedDescription)"
         }
-    }
-
-    private func load(_ result: Result<URL, Error>) {
-        do {
-            let url = try result.get()
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            pendingImport = try Backup.decode(Data(contentsOf: url))
-        } catch let error as Backup.BackupError {
-            message = error.localizedDescription
-        } catch {
-            message = "Ese archivo no es una copia del cancionero."
-        }
-    }
-
-    private func restore(_ backup: Backup) {
-        do {
-            try BackupService.restore(backup, into: context)
-            message = "Copia importada: \(backup.summary)."
-        } catch {
-            message = "No se pudo importar: \(error.localizedDescription)"
-        }
-        pendingImport = nil
     }
 }
 

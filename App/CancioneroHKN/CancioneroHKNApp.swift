@@ -20,11 +20,23 @@ struct CancioneroHKNApp: App {
     }
 }
 
-/// Junta el cancionero original con las canciones que el usuario editó o creó.
+/// Junta el cancionero importado con las canciones que el usuario editó o creó.
+/// Sin canciones muestra la bienvenida con el botón de importar.
 private struct RootView: View {
+    @Environment(\.modelContext) private var context
     @Query private var edits: [SongEditRecord]
 
     var body: some View {
-        SongListView(library: LibraryStore.shared.library(with: edits))
+        let library = LibraryStore.shared.library(with: edits)
+        Group {
+            if library.songs.isEmpty {
+                WelcomeView { title, blocks in
+                    SongEditRecord.insertCustom(title: title, blocks: blocks, into: context)
+                }
+            } else {
+                SongListView(library: library)
+            }
+        }
+        .cteaImportFlow()
     }
 }
