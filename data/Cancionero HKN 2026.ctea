@@ -1,6 +1,8 @@
 {
+ "format": "ctea",
  "version": 1,
- "source": "HKN_2026_cancionero_acordes.md",
+ "name": "Cancionero HKN 2026",
+ "exportedAt": "2026-11-16T18:32:02Z",
  "songs": [
   {
    "id": "001-al-estar-en-la-presencia",

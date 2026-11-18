@@ -29,5 +29,17 @@ final class SongEditRecord {
     }
 
     /// Las canciones creadas por el usuario se numeran a partir de 1001.
-    static let firstCustomNumber = 1001
+    static let firstCustomNumber = Song.firstCustomNumber
+
+    /// Guarda una canción escrita por el usuario en «Mis canciones».
+    @discardableResult
+    static func insertCustom(title: String, blocks: [SongBlock], into context: ModelContext) -> Song {
+        let customs = ((try? context.fetch(FetchDescriptor<SongEditRecord>())) ?? []).filter(\.isCustom)
+        let number = max(firstCustomNumber - 1, customs.compactMap { $0.song?.number }.max() ?? 0) + 1
+        let song = Song(id: "mi-" + UUID().uuidString.prefix(8).lowercased(), number: number, title: title,
+                        album: Song.customAlbum, blocks: blocks)
+        context.insert(SongEditRecord(song: song, isCustom: true))
+        try? context.save()
+        return song
+    }
 }

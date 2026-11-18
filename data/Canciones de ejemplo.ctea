@@ -1,0 +1,520 @@
+{
+ "format": "ctea",
+ "version": 1,
+ "name": "Canciones de ejemplo",
+ "exportedAt": "2026-11-16T22:00:00Z",
+ "songs": [
+  {
+   "id": "001-cielito-lindo",
+   "number": 1,
+   "title": "CIELITO LINDO",
+   "album": "EJEMPLOS",
+   "capo": null,
+   "chordDefinitions": {},
+   "blocks": [
+    {
+     "label": null,
+     "lines": [
+      {
+       "type": "instrumental",
+       "label": "INTRO",
+       "chords": [
+        "C",
+        "G7",
+        "C"
+       ],
+       "text": "INTRO: C G7 C"
+      },
+      {
+       "type": "lyric",
+       "text": "De la Sierra Morena, cielito lindo, vienen bajando,",
+       "chords": [
+        {
+         "pos": 6,
+         "chord": "C"
+        },
+        {
+         "pos": 29,
+         "chord": "G7"
+        },
+        {
+         "pos": 45,
+         "chord": "C"
+        }
+       ]
+      },
+      {
+       "type": "lyric",
+       "text": "un par de ojitos negros, cielito lindo, de contrabando.",
+       "chords": [
+        {
+         "pos": 17,
+         "chord": "C7"
+        },
+        {
+         "pos": 33,
+         "chord": "F"
+        },
+        {
+         "pos": 49,
+         "chord": "G7"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "label": "CORO",
+     "lines": [
+      {
+       "type": "lyric",
+       "text": "Ay, ay, ay, ay, canta y no llores,",
+       "chords": [
+        {
+         "pos": 0,
+         "chord": "G7"
+        },
+        {
+         "pos": 12,
+         "chord": "C"
+        },
+        {
+         "pos": 27,
+         "chord": "F"
+        }
+       ]
+      },
+      {
+       "type": "lyric",
+       "text": "porque cantando se alegran, cielito lindo, los corazones.",
+       "chords": [
+        {
+         "pos": 10,
+         "chord": "G7"
+        },
+        {
+         "pos": 36,
+         "chord": "C"
+        },
+        {
+         "pos": 51,
+         "chord": "G7"
+        },
+        {
+         "pos": 53,
+         "chord": "C"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "label": null,
+     "lines": [
+      {
+       "type": "lyric",
+       "text": "Pájaro que abandona, cielito lindo, su primer nido,",
+       "chords": [
+        {
+         "pos": 12,
+         "chord": "C"
+        },
+        {
+         "pos": 29,
+         "chord": "G7"
+        },
+        {
+         "pos": 46,
+         "chord": "C"
+        }
+       ]
+      },
+      {
+       "type": "lyric",
+       "text": "si lo encuentra ocupado, cielito lindo, bien merecido.",
+       "chords": [
+        {
+         "pos": 8,
+         "chord": "C7"
+        },
+        {
+         "pos": 33,
+         "chord": "F"
+        },
+        {
+         "pos": 49,
+         "chord": "G7"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "002-noche-de-paz",
+   "number": 2,
+   "title": "NOCHE DE PAZ",
+   "album": "EJEMPLOS",
+   "capo": null,
+   "chordDefinitions": {},
+   "blocks": [
+    {
+     "label": null,
+     "lines": [
+      {
+       "type": "instrumental",
+       "label": "INTRO",
+       "chords": [
+        "G",
+        "D7",
+        "G"
+       ],
+       "text": "INTRO: G D7 G"
+      },
+      {
+       "type": "lyric",
+       "text": "Noche de paz, noche de amor,",
+       "chords": [
+        {
+         "pos": 0,
+         "chord": "G"
+        }
+       ]
+      },
+      {
+       "type": "lyric",
+       "text": "todo duerme en derredor.",
+       "chords": [
+        {
+         "pos": 0,
+         "chord": "D7"
+        },
+        {
+         "pos": 17,
+         "chord": "G"
+        }
+       ]
+      },
+      {
+       "type": "lyric",
+       "text": "Entre sus astros que esparcen su luz,",
+       "chords": [
+        {
+         "pos": 0,
+         "chord": "C"
+        },
+        {
+         "pos": 21,
+         "chord": "G"
+        }
+       ]
+      },
+      {
+       "type": "lyric",
+       "text": "bella anunciando al niñito Jesús,",
+       "chords": [
+        {
+         "pos": 0,
+         "chord": "C"
+        },
+        {
+         "pos": 20,
+         "chord": "G"
+        }
+       ]
+      },
+      {
+       "type": "lyric",
+       "text": "brilla la estrella de paz,",
+       "chords": [
+        {
+         "pos": 0,
+         "chord": "D7"
+        },
+        {
+         "pos": 22,
+         "chord": "G"
+        }
+       ]
+      },
+      {
+       "type": "lyric",
+       "text": "brilla la estrella de paz.",
+       "chords": [
+        {
+         "pos": 0,
+         "chord": "G"
+        },
+        {
+         "pos": 10,
+         "chord": "D7"
+        },
+        {
+         "pos": 22,
+         "chord": "G"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "003-las-mananitas",
+   "number": 3,
+   "title": "LAS MAÑANITAS",
+   "album": "EJEMPLOS",
+   "capo": null,
+   "chordDefinitions": {},
+   "blocks": [
+    {
+     "label": null,
+     "lines": [
+      {
+       "type": "lyric",
+       "text": "Estas son las mañanitas que cantaba el rey David,",
+       "chords": [
+        {
+         "pos": 16,
+         "chord": "D"
+        },
+        {
+         "pos": 45,
+         "chord": "A7"
+        }
+       ]
+      },
+      {
+       "type": "lyric",
+       "text": "hoy por ser día de tu santo te las cantamos aquí.",
+       "chords": [
+        {
+         "pos": 22,
+         "chord": "A7"
+        },
+        {
+         "pos": 45,
+         "chord": "D"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "label": "CORO",
+     "lines": [
+      {
+       "type": "lyric",
+       "text": "Despierta, mi bien, despierta, mira que ya amaneció,",
+       "chords": [
+        {
+         "pos": 3,
+         "chord": "D"
+        },
+        {
+         "pos": 23,
+         "chord": "A7"
+        },
+        {
+         "pos": 46,
+         "chord": "D"
+        }
+       ]
+      },
+      {
+       "type": "lyric",
+       "text": "ya los pajarillos cantan, la luna ya se metió.",
+       "chords": [
+        {
+         "pos": 18,
+         "chord": "A7"
+        },
+        {
+         "pos": 42,
+         "chord": "D"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "004-de-colores",
+   "number": 4,
+   "title": "DE COLORES",
+   "album": "EJEMPLOS",
+   "capo": 2,
+   "chordDefinitions": {},
+   "blocks": [
+    {
+     "label": null,
+     "lines": [
+      {
+       "type": "lyric",
+       "text": "De colores, de colores se visten los campos en la primavera.",
+       "chords": [
+        {
+         "pos": 5,
+         "chord": "E"
+        },
+        {
+         "pos": 55,
+         "chord": "B7"
+        }
+       ]
+      },
+      {
+       "type": "lyric",
+       "text": "De colores, de colores son los pajarillos que vienen de afuera.",
+       "chords": [
+        {
+         "pos": 57,
+         "chord": "E"
+        }
+       ]
+      },
+      {
+       "type": "lyric",
+       "text": "De colores, de colores es el arco iris que vemos lucir.",
+       "chords": [
+        {
+         "pos": 5,
+         "chord": "E7"
+        },
+        {
+         "pos": 51,
+         "chord": "A"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "label": "CORO",
+     "lines": [
+      {
+       "type": "lyric",
+       "text": "Y por eso los grandes amores de muchos colores me gustan a mí,",
+       "chords": [
+        {
+         "pos": 6,
+         "chord": "B7"
+        },
+        {
+         "pos": 41,
+         "chord": "E"
+        },
+        {
+         "pos": 59,
+         "chord": "B7"
+        }
+       ]
+      },
+      {
+       "type": "lyric",
+       "text": "y por eso los grandes amores de muchos colores me gustan a mí.",
+       "chords": [
+        {
+         "pos": 41,
+         "chord": "E"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "005-amazing-grace",
+   "number": 5,
+   "title": "AMAZING GRACE",
+   "album": "EJEMPLOS",
+   "capo": null,
+   "chordDefinitions": {},
+   "blocks": [
+    {
+     "label": null,
+     "lines": [
+      {
+       "type": "instrumental",
+       "label": "INTRO",
+       "chords": [
+        "G",
+        "C",
+        "G",
+        "D"
+       ],
+       "text": "INTRO: G C G D"
+      },
+      {
+       "type": "lyric",
+       "text": "Amazing grace, how sweet the sound",
+       "chords": [
+        {
+         "pos": 1,
+         "chord": "G"
+        },
+        {
+         "pos": 19,
+         "chord": "C"
+        },
+        {
+         "pos": 29,
+         "chord": "G"
+        }
+       ]
+      },
+      {
+       "type": "lyric",
+       "text": "that saved a wretch like me.",
+       "chords": [
+        {
+         "pos": 25,
+         "chord": "D"
+        }
+       ]
+      },
+      {
+       "type": "lyric",
+       "text": "I once was lost, but now am found,",
+       "chords": [
+        {
+         "pos": 2,
+         "chord": "G"
+        },
+        {
+         "pos": 21,
+         "chord": "C"
+        },
+        {
+         "pos": 28,
+         "chord": "G"
+        }
+       ]
+      },
+      {
+       "type": "lyric",
+       "text": "was blind, but now I see.",
+       "chords": [
+        {
+         "pos": 4,
+         "chord": "Em"
+        },
+        {
+         "pos": 15,
+         "chord": "D"
+        },
+        {
+         "pos": 21,
+         "chord": "G"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

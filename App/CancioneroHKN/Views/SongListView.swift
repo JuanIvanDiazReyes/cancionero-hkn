@@ -339,13 +339,7 @@ struct SongListView: View {
 
     /// Guarda una canción escrita por el usuario en «Mis canciones» y la abre.
     private func create(title: String, blocks: [SongBlock]) {
-        let customs = ((try? context.fetch(FetchDescriptor<SongEditRecord>())) ?? []).filter(\.isCustom)
-        let number = max(SongEditRecord.firstCustomNumber - 1, customs.compactMap { $0.song?.number }.max() ?? 0) + 1
-        let song = Song(id: "mi-" + UUID().uuidString.prefix(8).lowercased(), number: number, title: title,
-                        album: Song.customAlbum, blocks: blocks)
-        context.insert(SongEditRecord(song: song, isCustom: true))
-        try? context.save()
-        selectedID = song.id
+        selectedID = SongEditRecord.insertCustom(title: title, blocks: blocks, into: context).id
     }
 }
 
@@ -419,8 +413,11 @@ private struct SongRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            Text(position.map { "\($0)." } ?? "\(song.number)")
+            Text(verbatim: position.map { "\($0)." } ?? String(song.number))
                 .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .padding(.horizontal, 2)
                 .foregroundStyle(position == nil ? Theme.accent : Color.white)
                 .frame(width: 34, height: 34)
                 .background(position == nil ? Theme.accent.opacity(0.10) : Theme.accent,
@@ -469,8 +466,10 @@ private struct AddSongsSheet: View {
                         Image(systemName: picked.contains(song.id) ? "checkmark.circle.fill" : "circle")
                             .font(.title3)
                             .foregroundStyle(picked.contains(song.id) ? Theme.accent : Theme.hairline)
-                        Text("\(song.number)")
+                        Text(verbatim: String(song.number))
                             .font(.footnote.weight(.bold).monospacedDigit())
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
                             .foregroundStyle(Theme.accent)
                             .frame(width: 34, alignment: .leading)
                         Text(song.displayTitle)
