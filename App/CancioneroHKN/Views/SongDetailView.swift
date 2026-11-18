@@ -423,8 +423,11 @@ struct SongDetailView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 14) {
-                Text("\(song.number)")
+                Text(verbatim: String(song.number))
                     .font(.system(size: 20, weight: .bold, design: .rounded).monospacedDigit())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                    .padding(.horizontal, 4)
                     .foregroundStyle(Theme.accent)
                     .frame(width: 46, height: 46)
                     .background(Theme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))

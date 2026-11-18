@@ -413,8 +413,11 @@ private struct SongRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            Text(position.map { "\($0)." } ?? "\(song.number)")
+            Text(verbatim: position.map { "\($0)." } ?? String(song.number))
                 .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .padding(.horizontal, 2)
                 .foregroundStyle(position == nil ? Theme.accent : Color.white)
                 .frame(width: 34, height: 34)
                 .background(position == nil ? Theme.accent.opacity(0.10) : Theme.accent,
@@ -463,8 +466,10 @@ private struct AddSongsSheet: View {
                         Image(systemName: picked.contains(song.id) ? "checkmark.circle.fill" : "circle")
                             .font(.title3)
                             .foregroundStyle(picked.contains(song.id) ? Theme.accent : Theme.hairline)
-                        Text("\(song.number)")
+                        Text(verbatim: String(song.number))
                             .font(.footnote.weight(.bold).monospacedDigit())
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
                             .foregroundStyle(Theme.accent)
                             .frame(width: 34, alignment: .leading)
                         Text(song.displayTitle)
